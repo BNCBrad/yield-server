@@ -1,213 +1,542 @@
 const axios = require('axios');
 const sdk = require('@defillama/sdk');
-const ethers = require('ethers');
+const { utils: ethersUtils } = require('ethers');
 
 const { addMerklRewardApy } = require('../merkl/merkl-additional-reward');
-
 const lensAbi = require('./lens.abi.json');
-const factoryAbi = require('./factory.abi.json');
+const eulerEarnLensAbi = require('./eulerEarnLens.abi.json');
+const { getPriceApiData } = require('../utils');
+
+// Euler v2 EVK vaults are both lend/debt markets and possible collateral assets
+// for other EVK markets. Vault rows keep the real supply/borrow state; separate
+// `routing_collateral` rows model the allowed collateral -> debt links for
+// downstream borrow routers using `routeGroupKey` and `underlyingStateKey`.
+// ---------------------------------------------------------------------------
+// Hybrid architecture:
+// - EVK lend vaults are discovered from the subgraph, then priced from live lens data
+// - Euler Earn vault inclusion and vault state come from live lens/governance calls
+// - Eliminates scanning millions of blocks per chain on every run
+// ---------------------------------------------------------------------------
+
+const SUBGRAPH_BASE =
+  'https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs';
 
 const chains = {
   ethereum: {
-    factory: '0x29a56a1b8214D9Cf7c5561811750D5cBDb45CC8e',
+    subgraph: `${SUBGRAPH_BASE}/euler-v2-mainnet/latest/gn`,
+    urlChain: 'ethereum',
+    networkId: 1,
     vaultLens: '0x83801C7BbeEFa54B91F8A07E36D81515a0Fc5b60',
-    fromBlock: 20529225,
-  },
-  bob: {
-    factory: '0x046a9837A61d6b6263f54F4E27EE072bA4bdC7e4',
-    vaultLens: '0xC6B56a52e5823659d90F3020164b92D1c2de03CE',
-    fromBlock: 12266832,
-  },
-  sonic: {
-    factory: '0xF075cC8660B51D0b8a4474e3f47eDAC5fA034cFB',
-    vaultLens: '0x4c7BA548032FE3eA11b7D6BeaF736B3B74F69248',
-    fromBlock: 5324454,
+    eulerEarnVaultLens: '0x20954C32Bc063a125036b2563ca74fa98b5013D9',
+    eulerEarnGovernedPerspective: '0x492e9FE1289d43F8bB6275237BF16c9248C74D44',
   },
   avax: {
-    factory: '0xaf4B4c18B17F6a2B32F6c398a3910bdCD7f26181',
+    subgraph: `${SUBGRAPH_BASE}/euler-v2-avalanche/latest/gn`,
+    urlChain: 'avalanche',
+    networkId: 43114,
     vaultLens: '0xcC5F7593a4D5974F84A30B28Bd3fdb374319a254',
-    fromBlock: 56805794,
-  },
-  berachain: {
-    factory: '0x5C13fb43ae9BAe8470f646ea647784534E9543AF',
-    vaultLens: '0x2ffd260BAd257C08516B649c93Ea3eb6b63a5639',
-    fromBlock: 786314,
+    eulerEarnVaultLens: '0xe58989e0E3f20f2e56fD407C6E28fe63675fDdB8',
+    eulerEarnGovernedPerspective: '0x23559eF969252b81d8DA2b86a76D85fb602860Ad',
   },
   bsc: {
-    factory: '0x7F53E2755eB3c43824E162F7F6F087832B9C9Df6',
+    subgraph: `${SUBGRAPH_BASE}/euler-v2-bsc/latest/gn`,
+    urlChain: 'bnbsmartchain',
+    networkId: 56,
     vaultLens: '0x84641751808f85F54344369036594E1a7301a414',
-    fromBlock: 46370655,
+    eulerEarnVaultLens: '0x079E485A869d2cEca0dCbB96A8308e6d972aB57f',
+    eulerEarnGovernedPerspective: '0xEF7599ef1CB0ec48ED6f4174641462D6919A7CE2',
   },
   base: {
-    factory: '0x7F321498A801A191a93C840750ed637149dDf8D0',
+    subgraph: `${SUBGRAPH_BASE}/euler-v2-base/latest/gn`,
+    urlChain: 'base',
+    networkId: 8453,
     vaultLens: '0x3530dA02ceC2818477888FdC77e777b566B6db4C',
-    fromBlock: 22282408,
-  },
-  swellchain: {
-    factory: '0x238bF86bb451ec3CA69BB855f91BDA001aB118b9',
-    vaultLens: '0x94Dd6A076838D6Fc5031e32138b95d810793DB1c',
-    fromBlock: 2350701,
+    eulerEarnVaultLens: '0x0BBf9eE761bFF1c4d64dB608781D5e3beFeed875',
+    eulerEarnGovernedPerspective: '0x08B817C17d84DF89AA371084D910081a5Cc04724',
   },
   unichain: {
-    factory: '0xbAd8b5BDFB2bcbcd78Cc9f1573D3Aad6E865e752',
+    subgraph: `${SUBGRAPH_BASE}/euler-v2-unichain/latest/gn`,
+    urlChain: 'unichain',
+    networkId: 130,
     vaultLens: '0xd40DD19eD88a949436f784877A1BB59660ee8DE3',
-    fromBlock: 8541544,
+    eulerEarnVaultLens: '0x3a373AF9759ac6546A6BFa6eAAbb0B8fc1E1d241',
+    eulerEarnGovernedPerspective: '0x16F187C4EFCCbbF5B530A9c64447B89c4D73F3F2',
   },
   arbitrum: {
-    factory: '0x78Df1CF5bf06a7f27f2ACc580B934238C1b80D50',
+    subgraph: `${SUBGRAPH_BASE}/euler-v2-arbitrum/latest/gn`,
+    urlChain: 'arbitrumone',
+    networkId: 42161,
     vaultLens: '0x59d28aF1fC4A52EE402C9099BeCEf333366184Df',
-    fromBlock: 300690953,
+    eulerEarnVaultLens: '0x15971F66916d402646ad3DEaE482ccf37b2100ef',
+    eulerEarnGovernedPerspective: '0xeE3de4507cFAc8756634dC5272B4A6BB7f00C49E',
   },
   linea: {
-    factory: '0x84711986Fd3BF0bFe4a8e6d7f4E22E67f7f27F04',
+    subgraph: `${SUBGRAPH_BASE}/euler-v2-linea/latest/gn`,
+    urlChain: 'lineamainnet',
+    networkId: 59144,
     vaultLens: '0xd20E9D6cfa0431aC306cC9906896a7BC0BE0Db64',
-    fromBlock: 17915340,
+    eulerEarnVaultLens: '0xF8074bbcC6e9c04EB6d3Fc69A5D502Ca774f663C',
+    eulerEarnGovernedPerspective: '0xb42a9DD67bD6b48940A862C0f0c8a6C5DD26582f',
   },
-  tac: {
-    factory: '0x2b21621b8Ef1406699a99071ce04ec14cCd50677',
-    vaultLens: '0x70d9bc0aBd4EF6Ceb7C88875b9cf4013db3D780A',
-    fromBlock: 555116,
+  monad: {
+    subgraph: `${SUBGRAPH_BASE}/euler-v2-monad/latest/gn`,
+    urlChain: 'monad',
+    networkId: 143,
+    vaultLens: '0x15d1Cc54fB3f7C0498fc991a23d8Dc00DF3c32A0',
+    eulerEarnVaultLens: '0x78f40a9822d170D7bC275986Dc2a4eF02C972367',
+    eulerEarnGovernedPerspective: '0xe4A695d715732db3d694E30EC57b1acc8cC4368b',
+  },
+  plasma: {
+    subgraph: `${SUBGRAPH_BASE}/euler-v2-plasma/latest/gn`,
+    urlChain: 'plasma',
+    networkId: 9745,
+    vaultLens: '0x62FF27a1fBE6024D2933A88D39E0FF877dB4FE0B',
+    eulerEarnVaultLens: '0x984F25135BEc8fCabA26A6005c1632BC0DCcFd7C',
+    eulerEarnGovernedPerspective: '0xAA8b9729a047568CB0614165509229A86e345Be1',
+  },
+  hyperliquid: {
+    subgraph: `${SUBGRAPH_BASE}/euler-v2-hyperevm/latest/gn`,
+    urlChain: 'hyperliquid',
+    networkId: 999,
+    vaultLens: '0x34B90aeCBe2d0b1Bb337799CF0AA9939E1F39c1B',
+    eulerEarnVaultLens: '0x2b76970adEAB958956975895a9F1888Ea6E4Ac4A',
+    eulerEarnGovernedPerspective: '0x7b27dED9344D9c66FeAF58D151b52d1359aeA807',
   },
 };
 
-// Chain name mapping for URL construction
-const chainNameMapping = {
-  ethereum: 'ethereum',
-  bob: 'bob',
-  sonic: 'sonic',
-  avax: 'avalanche',
-  berachain: 'berachain',
-  bsc: 'bnbsmartchain',
-  base: 'base',
-  swellchain: 'swellchain',
-  unichain: 'unichain',
-  arbitrum: 'arbitrumone',
-  linea: 'lineamainnet',
-  tac: 'tac',
+// Subgraph APY values are 27-decimal fixed-point; dividing by 1e25 gives percentage
+const APY_DIVISOR = 1e25;
+
+// EVK vault symbol format is "e{ASSET_SYMBOL}-{N}" (e.g. "eUSDC-80", "ewstETH-2")
+const parseAssetSymbol = (vaultSymbol) =>
+  vaultSymbol.replace(/^e/, '').replace(/-\d+$/, '');
+
+const toNumber = (value) => Number(value?.toString?.() ?? value);
+
+// Euler lens returns resolved cap amounts. Tiny non-zero caps mean dust/frozen.
+// Governance sets caps to these tiny values to freeze a vault for wind-down.
+const CAP_FROZEN_THRESHOLD = 64;
+const isCapFrozen = (cap) => cap > 0 && cap < CAP_FROZEN_THRESHOLD;
+const toBigInt = (value) =>
+  value === undefined || value === null ? 0n : BigInt(value.toString());
+
+const getAvailableBorrowUsd = (info, price, decimals) => {
+  const cash = toBigInt(info.totalCash);
+  const borrowed = toBigInt(info.totalBorrowed);
+  const borrowCap = toBigInt(info.borrowCap);
+  const capHeadroom = borrowCap > borrowed ? borrowCap - borrowed : 0n;
+  const availableRaw = cash < capHeadroom ? cash : capHeadroom;
+
+  return (Number(availableRaw.toString()) / 10 ** decimals) * price;
 };
 
-const CHAIN_TIMEOUT_MS = 120_000;
+const getBorrowLtv = (ltvInfo) => toNumber(ltvInfo.borrowLTV ?? ltvInfo[1]);
+const getCollateralVault = (ltvInfo) => ltvInfo.collateral ?? ltvInfo[0];
 
-const getLogsWithTimeout = (params, chain) => {
-  let timer;
-  const timeoutPromise = new Promise((_, reject) => {
-    timer = setTimeout(
-      () => reject(new Error(`Timed out fetching logs for ${chain}`)),
-      CHAIN_TIMEOUT_MS
-    );
-  });
+const EVK_QUERY = `{
+  eulerVaults(first: 1000) {
+    id
+    name
+    symbol
+  }
+}`;
 
-  return Promise.race([sdk.api.util.getLogs(params), timeoutPromise]).finally(
-    () => clearTimeout(timer)
+const querySubgraph = async (url, query) => {
+  const { data } = await axios.post(url, { query }, { timeout: 30_000 });
+  if (data.errors) throw new Error(data.errors[0].message);
+  return data.data;
+};
+
+const verifiedEarnVaultsAbi = {
+  inputs: [],
+  name: 'verifiedArray',
+  outputs: [{ internalType: 'address[]', name: '', type: 'address[]' }],
+  stateMutability: 'view',
+  type: 'function',
+};
+
+const eulerEarnVaultInfoFullAbi = eulerEarnLensAbi.find(
+  (m) => m.name === 'getVaultInfoFull'
+);
+const vaultInfoFullAbi = lensAbi.find((m) => m.name === 'getVaultInfoFull');
+const chunk = (arr, size) =>
+  Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
+    arr.slice(i * size, i * size + size)
   );
+
+const getSupplyApyFromVaultInfo = (info) => {
+  const rateInfo = info?.irmInfo?.interestRateInfo?.[0];
+  const supplyApy = rateInfo?.supplyAPY ?? rateInfo?.[4];
+  return supplyApy === undefined || supplyApy === null
+    ? null
+    : toNumber(supplyApy) / APY_DIVISOR;
+};
+
+const getBorrowApyFromVaultInfo = (info) => {
+  const rateInfo = info?.irmInfo?.interestRateInfo?.[0];
+  const borrowApy = rateInfo?.borrowAPY ?? rateInfo?.[3];
+  return borrowApy === undefined || borrowApy === null
+    ? null
+    : toNumber(borrowApy) / APY_DIVISOR;
+};
+
+const getVerifiedEarnVaults = async (chain, config) => {
+  if (!config.eulerEarnGovernedPerspective) return new Set();
+
+  try {
+    const { output } = await sdk.api.abi.call({
+      chain,
+      target: config.eulerEarnGovernedPerspective,
+      abi: verifiedEarnVaultsAbi,
+    });
+
+    return new Set((output || []).map((a) => a.toLowerCase()));
+  } catch (err) {
+    console.error(
+      `Error fetching verified Euler Earn vaults for ${chain}:`,
+      err.message || err
+    );
+    return new Set();
+  }
+};
+
+const getEulerEarnVaults = async (chain, config, verifiedEarnVaults) => {
+  if (!config.eulerEarnVaultLens || verifiedEarnVaults.size === 0) return [];
+
+  try {
+    const { output } = await sdk.api.abi.multiCall({
+      calls: [...verifiedEarnVaults].map((vault) => ({
+        target: config.eulerEarnVaultLens,
+        params: [vault],
+      })),
+      abi: eulerEarnVaultInfoFullAbi,
+      chain,
+      permitFailure: true,
+    });
+
+    return output.map((o) => o.output).filter(Boolean);
+  } catch (err) {
+    console.error(
+      `Error fetching Euler Earn vault info for ${chain}:`,
+      err.message || err
+    );
+    return [];
+  }
+};
+
+const getEvkVaultInfoMap = async (chain, config, evkVaults) => {
+  if (!config.vaultLens || evkVaults.length === 0) return {};
+
+  const map = {};
+  for (const vaultChunk of chunk(evkVaults, 25)) {
+    try {
+      const { output } = await sdk.api.abi.multiCall({
+        calls: vaultChunk.map((v) => ({
+          target: config.vaultLens,
+          params: [v.id],
+        })),
+        abi: vaultInfoFullAbi,
+        chain,
+        permitFailure: true,
+      });
+
+      output.forEach((result, i) => {
+        if (result?.output) map[vaultChunk[i].id.toLowerCase()] = result.output;
+      });
+    } catch (err) {
+      console.error(
+        `Error fetching EVK vault info batch for ${chain}:`,
+        err.message || err
+      );
+    }
+  }
+
+  return map;
+};
+
+const getEarnStrategyApyMap = async (chain, config, earnVaults) => {
+  if (!config.vaultLens || earnVaults.length === 0) return {};
+
+  const strategies = [
+    ...new Set(
+      earnVaults.flatMap((v) =>
+        (v.strategies || [])
+          .filter((s) => toNumber(s.allocatedAssets || 0) > 0)
+          .filter((s) => s.info?.isEVault !== false)
+          .map((s) => s.strategy.toLowerCase())
+      )
+    ),
+  ];
+  if (strategies.length === 0) return {};
+
+  try {
+    const { output } = await sdk.api.abi.multiCall({
+      calls: strategies.map((strategy) => ({
+        target: config.vaultLens,
+        params: [strategy],
+      })),
+      abi: vaultInfoFullAbi,
+      chain,
+      permitFailure: true,
+    });
+
+    return output.reduce((acc, result, i) => {
+      const apy = result.output ? getSupplyApyFromVaultInfo(result.output) : null;
+      if (apy !== null) acc[strategies[i]] = apy;
+      return acc;
+    }, {});
+  } catch (err) {
+    console.error(
+      `Error fetching Euler Earn strategy APYs for ${chain}:`,
+      err.message || err
+    );
+    return {};
+  }
 };
 
 const getApys = async () => {
-  const factoryIFace = new ethers.utils.Interface(factoryAbi);
-
   const chainResults = await Promise.all(
     Object.entries(chains).map(async ([chain, config]) => {
       try {
-        const currentBlock = await sdk.api.util.getLatestBlock(chain);
-        const toBlock = currentBlock.number;
-
-        // Fetch all pools from factory events
-        const poolDeployEvents = await getLogsWithTimeout(
-          {
-            fromBlock: config.fromBlock,
-            toBlock: toBlock,
-            target: config.factory,
-            chain: chain,
-            topic: '',
-            keys: [],
-            topics: [factoryIFace.getEventTopic('ProxyCreated')],
-            entireLog: true,
-          },
-          chain
+        const [evkData, verifiedEarnVaults] = await Promise.all([
+          querySubgraph(config.subgraph, EVK_QUERY),
+          getVerifiedEarnVaults(chain, config),
+        ]);
+        const earnVaults = await getEulerEarnVaults(
+          chain,
+          config,
+          verifiedEarnVaults
+        );
+        const earnStrategyApyMap = await getEarnStrategyApyMap(
+          chain,
+          config,
+          earnVaults
         );
 
-        const vaultAddresses = poolDeployEvents.output.map((event) => {
-          const decoded = factoryIFace.decodeEventLog(
-            'ProxyCreated',
-            event.data,
-            event.topics
-          );
-          return decoded['proxy'];
-        });
+        const evkVaults = evkData.eulerVaults || [];
+        const evkVaultInfoMap = await getEvkVaultInfoMap(
+          chain,
+          config,
+          evkVaults
+        );
 
-        const vaultInfos = (
-          await sdk.api.abi.multiCall({
-            calls: vaultAddresses.map((address) => ({
-              target: config.vaultLens,
-              params: [address],
-            })),
-            abi: lensAbi.find((m) => m.name === 'getVaultInfoFull'),
-            chain,
-            permitFailure: true,
+        // Filter to active vaults for pool output (exclude frozen caps)
+        const activeEvkVaults = evkVaults.filter(
+          (v) => {
+            const info = evkVaultInfoMap[v.id.toLowerCase()];
+            return (
+              info &&
+              getSupplyApyFromVaultInfo(info) > 0 &&
+              !isCapFrozen(toNumber(info.supplyCap)) &&
+              !isCapFrozen(toNumber(info.borrowCap))
+            );
+          }
+        );
+
+        // Collect unique asset addresses and fetch prices
+        const assets = new Set(
+          activeEvkVaults.map(
+            (v) => evkVaultInfoMap[v.id.toLowerCase()].asset
+          )
+        );
+        activeEvkVaults.forEach((v) => {
+          const info = evkVaultInfoMap[v.id.toLowerCase()];
+          (info.collateralLTVInfo || []).forEach((ltvInfo) => {
+            if (getBorrowLtv(ltvInfo) <= 0) return;
+            const collateralVault = getCollateralVault(ltvInfo);
+            if (!collateralVault) return;
+            const collateralInfo =
+              evkVaultInfoMap[collateralVault.toLowerCase()];
+            if (collateralInfo) assets.add(collateralInfo.asset);
+          });
+        });
+        earnVaults.forEach((v) => assets.add(v.asset));
+        const priceKeys = [...assets].map((a) => `${chain}:${a}`).join(',');
+        if (!priceKeys) return [];
+
+        const prices = await getPriceApiData(`/prices/current/${priceKeys}`);
+
+        // --- Build EVK pools ---
+        const evkPools = activeEvkVaults
+          .map((v) => {
+            const info = evkVaultInfoMap[v.id.toLowerCase()];
+            const price = prices.coins[`${chain}:${info.asset}`]?.price;
+            if (price === undefined || price === null) return null;
+
+            const assetSymbol = info.assetSymbol || parseAssetSymbol(v.symbol);
+            const assetDecimals = toNumber(info.assetDecimals);
+            const totalSupply =
+              toNumber(info.totalAssets) / 10 ** assetDecimals;
+            const borrows =
+              toNumber(info.totalBorrowed) / 10 ** assetDecimals;
+            const totalSupplyUsd = totalSupply * price;
+            const totalBorrowUsd = borrows * price;
+            const availableBorrowUsd = getAvailableBorrowUsd(
+              info,
+              price,
+              assetDecimals
+            );
+
+            const vaultAddr = ethersUtils.getAddress(info.vault || v.id);
+            const assetAddr = ethersUtils.getAddress(info.asset);
+            return {
+              pool: vaultAddr,
+              chain,
+              project: 'euler-v2',
+              routeGroupKey: vaultAddr.toLowerCase(),
+              symbol: assetSymbol,
+              poolMeta: info.vaultName || v.name,
+              tvlUsd: totalSupplyUsd - totalBorrowUsd,
+              totalSupplyUsd,
+              totalBorrowUsd,
+              availableBorrowUsd,
+              apyBase: getSupplyApyFromVaultInfo(info),
+              apyBaseBorrow: getBorrowApyFromVaultInfo(info),
+              underlyingTokens: [assetAddr],
+              borrowToken: assetAddr,
+              borrowable: availableBorrowUsd > 0,
+              ltv: 0,
+              url: `https://app.euler.finance/lend/${vaultAddr}?network=${config.urlChain}`,
+            };
           })
-        ).output.map((o) => o.output);
-
-        // keep only pools with interest rate data
-        const vaultInfosFilterted = vaultInfos.filter(
-          (i) => i?.irmInfo?.interestRateInfo[0]?.supplyAPY > 0
+          .filter(Boolean);
+        const evkPoolRouteGroupKeys = new Set(
+          evkPools.map((p) => p.routeGroupKey)
         );
 
-        const priceKeys = vaultInfosFilterted
-          .map((i) => `${chain}:${i.asset}`)
-          .join(',');
+        const collateralRoutePools = activeEvkVaults
+          .flatMap((v) => {
+            const debtInfo = evkVaultInfoMap[v.id.toLowerCase()];
+            const debtAssetAddr = ethersUtils.getAddress(debtInfo.asset);
+            const debtVaultAddr = ethersUtils.getAddress(debtInfo.vault || v.id);
+            const debtRouteGroupKey = debtVaultAddr.toLowerCase();
+            if (!evkPoolRouteGroupKeys.has(debtRouteGroupKey)) return [];
 
-        const { data: prices } = await axios.get(
-          `https://coins.llama.fi/prices/current/${priceKeys}`
-        );
+            return (debtInfo.collateralLTVInfo || []).map((ltvInfo) => {
+              const borrowLtv = getBorrowLtv(ltvInfo);
+              if (borrowLtv <= 0) return null;
 
-        const pools = vaultInfosFilterted.map((i) => {
-          const price = prices.coins[`${chain}:${i.asset}`]?.price;
+              const collateralVault = getCollateralVault(ltvInfo);
+              if (!collateralVault) return null;
+              const collateralInfo =
+                evkVaultInfoMap[collateralVault.toLowerCase()];
+              if (!collateralInfo) return null;
+              if (isCapFrozen(toNumber(collateralInfo.supplyCap))) return null;
 
-          const totalSupplied = i.totalAssets;
-          const totalBorrowed = i.totalBorrowed;
+              const collateralPrice =
+                prices.coins[`${chain}:${collateralInfo.asset}`]?.price;
+              if (collateralPrice === undefined || collateralPrice === null) {
+                return null;
+              }
 
-          const totalSuppliedUSD =
-            ethers.utils.formatUnits(totalSupplied, i.assetDecimals) * price;
-          const totalBorrowedUSD =
-            ethers.utils.formatUnits(totalBorrowed, i.assetDecimals) * price;
+              const collateralDecimals = toNumber(collateralInfo.assetDecimals);
+              const collateralTotalSupplyUsd =
+                (toNumber(collateralInfo.totalAssets) /
+                  10 ** collateralDecimals) *
+                collateralPrice;
+              const collateralVaultAddr = ethersUtils.getAddress(
+                collateralInfo.vault || collateralVault
+              );
+              const underlyingStateKey = collateralVaultAddr.toLowerCase();
+              const collateralAssetAddr = ethersUtils.getAddress(
+                collateralInfo.asset
+              );
+              const collateralSymbol =
+                collateralInfo.assetSymbol ||
+                parseAssetSymbol(collateralInfo.vaultSymbol || '');
+              const debtSymbol =
+                debtInfo.assetSymbol || parseAssetSymbol(debtInfo.vaultSymbol);
 
-          return {
-            pool: i.vault,
-            chain,
-            project: 'euler-v2',
-            symbol: i.assetSymbol,
-            poolMeta: i.vaultName,
-            tvlUsd: totalSuppliedUSD - totalBorrowedUSD,
-            totalSupplyUsd: totalSuppliedUSD,
-            totalBorrowUsd: totalBorrowedUSD,
-            apyBase: Number(
-              ethers.utils.formatUnits(
-                i.irmInfo.interestRateInfo[0].supplyAPY,
-                25
-              )
-            ),
-            apyBaseBorrow: Number(
-              ethers.utils.formatUnits(
-                i.irmInfo.interestRateInfo[0].borrowAPY,
-                25
-              )
-            ),
-            underlyingTokens: [i.asset],
-            url: `https://app.euler.finance/vault/${i.vault}?network=${chainNameMapping[chain]}`,
-          };
-        });
-        return pools;
+              return {
+                pool: `${collateralVaultAddr}-${debtVaultAddr}-${chain}`,
+                chain,
+                project: 'euler-v2',
+                poolKind: 'routing_collateral',
+                routeGroupKey: debtRouteGroupKey,
+                ...(evkPoolRouteGroupKeys.has(underlyingStateKey) && {
+                  underlyingStateKey,
+                }),
+                symbol: collateralSymbol,
+                token: null,
+                apy: 0,
+                poolMeta: `${collateralSymbol}/${debtSymbol}`,
+                tvlUsd: collateralTotalSupplyUsd,
+                totalSupplyUsd: collateralTotalSupplyUsd,
+                underlyingTokens: [collateralAssetAddr],
+                borrowToken: debtAssetAddr,
+                borrowable: true,
+                ltv: borrowLtv / 10000,
+                url: `https://app.euler.finance/borrow/${collateralVaultAddr}/${debtVaultAddr}?network=${config.networkId}`,
+              };
+            });
+          })
+          .filter(Boolean);
+
+        // --- Build Euler Earn pools ---
+        const earnPools = earnVaults
+          .map((v) => {
+            const priceData = prices.coins[`${chain}:${v.asset}`];
+            if (!priceData?.price) return null;
+
+            const symbol = v.assetSymbol || priceData.symbol;
+            const decimals = toNumber(v.assetDecimals ?? priceData.decimals);
+            const tvlUsd =
+              (toNumber(v.totalAssets) / 10 ** decimals) * priceData.price;
+
+            // Calculate APY from weighted average of live underlying EVK strategy APYs
+            let apyBase = null;
+            const totalAllocated = (v.strategies || []).reduce(
+              (sum, s) => sum + toNumber(s.allocatedAssets || 0),
+              0
+            );
+
+            if (totalAllocated > 0 && v.strategies?.length > 0) {
+              let weightedApy = 0;
+              for (const s of v.strategies) {
+                const allocated = toNumber(s.allocatedAssets || 0);
+                if (allocated === 0) continue;
+                const strategyApy =
+                  earnStrategyApyMap[s.strategy.toLowerCase()] || 0;
+                weightedApy += strategyApy * (allocated / totalAllocated);
+              }
+              // Apply performance fee
+              const feePct = toNumber(v.performanceFee || 0) / 1e18;
+              apyBase = weightedApy * (1 - feePct);
+            }
+
+            const earnAddr = ethersUtils.getAddress(v.vault);
+            const earnAssetAddr = ethersUtils.getAddress(v.asset);
+            return {
+              pool: `euler-earn-${earnAddr}-${chain}`,
+              chain,
+              project: 'euler-v2',
+              symbol,
+              poolMeta: v.vaultName,
+              tvlUsd,
+              apyBase,
+              underlyingTokens: [earnAssetAddr],
+              url: `https://app.euler.finance/earn/${earnAddr}?network=${config.urlChain}`,
+            };
+          })
+          .filter((p) => p && p.tvlUsd > 100);
+
+        return [...evkPools, ...collateralRoutePools, ...earnPools];
       } catch (err) {
-        console.error(`Error processing chain ${chain}:`, err);
+        console.error(`Error processing chain ${chain}:`, err.message || err);
         return [];
       }
     })
   );
 
-  return await addMerklRewardApy(chainResults.flat(), 'euler');
+  return await addMerklRewardApy(chainResults.flat(), 'euler', (p) => {
+    if (p.poolKind === 'routing_collateral') return '';
+    const match = p.pool.match(/0x[a-fA-F0-9]{40}/);
+    return match ? match[0] : p.pool;
+  });
 };
 
 module.exports = {
+  protocolId: '5044',
   timetravel: false,
   apy: getApys,
 };

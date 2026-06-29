@@ -1,6 +1,6 @@
 const { default: BigNumber } = require('bignumber.js');
 const utils = require('../utils');
-const superagent = require('superagent');
+const axios = require('axios');
 const { request, gql } = require('graphql-request');
 
 const graphUrls = {
@@ -42,8 +42,8 @@ const apr7dToApy = (apr) => {
 // Process Nabla indexer response
 const getNablaIndexerPoolsMetrics = async (chain) => {
   try {
-    const response = await superagent.get(nablaIndexerUrls[chain]);
-    const data = response.body;
+    const response = await axios.get(nablaIndexerUrls[chain]);
+    const data = response.data;
 
     if (!data.bsps || data.bsps.length === 0) {
       console.log(`No BSPs found for chain: ${chain}`);
@@ -64,12 +64,12 @@ const getNablaIndexerPoolsMetrics = async (chain) => {
 
       let usdPrices = {};
       try {
-        const priceResponse = await superagent.get(
-          `https://coins.llama.fi/prices/current/${priceKeys
+        const priceResponse = await axios.get(
+          utils.getPriceApiUrl(`/prices/current/${priceKeys
             .join(',')
-            .toLowerCase()}`
+            .toLowerCase()}`)
         );
-        usdPrices = priceResponse.body.coins || {};
+        usdPrices = priceResponse.data.coins || {};
       } catch (err) {
         console.error(`Failed fetching prices for chain ${chain}:`, err);
         continue;
@@ -110,7 +110,7 @@ const getNablaIndexerPoolsMetrics = async (chain) => {
           pool: `${poolAddress}-${chain}`,
           chain: utils.formatChain(chain),
           project: 'nabla-finance',
-          symbol: utils.formatSymbol(asset_symbol),
+          symbol: asset_symbol,
           underlyingTokens: [tokenAddress],
           tvlUsd: tvlUsd,
           apyBase: apyBase,
@@ -143,12 +143,12 @@ const getGraphPoolsMetrics = async (chain) => {
 
     let usdPrices = {};
     try {
-      const priceResponse = await superagent.get(
-        `https://coins.llama.fi/prices/current/${priceKeys
+      const priceResponse = await axios.get(
+        utils.getPriceApiUrl(`/prices/current/${priceKeys
           .join(',')
-          .toLowerCase()}`
+          .toLowerCase()}`)
       );
-      usdPrices = priceResponse.body.coins || {};
+      usdPrices = priceResponse.data.coins || {};
     } catch (err) {
       console.error(`Failed fetching prices for chain ${chain}:`, err);
       return [];
@@ -179,7 +179,7 @@ const getGraphPoolsMetrics = async (chain) => {
           pool: `${pool}-${chain}`,
           chain: utils.formatChain(chain),
           project: 'nabla-finance',
-          symbol: utils.formatSymbol(symbol),
+          symbol: symbol,
           underlyingTokens: [tokenAddress],
           tvlUsd: tvlUsd,
           apyBase: apyBase,
@@ -224,6 +224,7 @@ const poolsOnAllChains = async () => {
 };
 
 module.exports = {
+  protocolId: '5309',
   timetravel: false,
   apy: poolsOnAllChains,
   url: 'https://app.nabla.fi/pools',

@@ -1,6 +1,6 @@
 const utils = require('../utils');
 const sdk = require('@defillama/sdk');
-const superagent = require('superagent');
+const axios = require('axios');
 const vault_abi = require('./vault_abi.json');
 const USD_APY_URL =
   'https://service-pr02-sg.bankofchain.io/apy/vault_apy?chainId=1&duration=monthly&offset=0&limit=1&tokenType=USDi';
@@ -49,9 +49,7 @@ const eth_apy = async () => {
     target: ETH_VAULT_ADDRESS,
   });
   const key = 'ethereum:0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2';
-  const ethPriceUSD = (
-    await superagent.get(`https://coins.llama.fi/prices/current/${key}`)
-  ).body.coins[key].price;
+  const ethPriceUSD = (await utils.getPriceApiData(`/prices/current/${key}`)).coins[key].price;
 
   return {
     pool: `${ETH_VAULT_ADDRESS}-ethereum`,
@@ -70,6 +68,7 @@ const apy = async () => {
 };
 
 module.exports = {
+  protocolId: '2265',
   apy,
   url: 'https://bankofchain.io',
   timetravel: false,

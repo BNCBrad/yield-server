@@ -4,7 +4,6 @@ const ethers = require('ethers');
 const {abi} = require("./ABI")
 const {vaultAbi} = require("./vaultAbi")
 const sdk = require('@defillama/sdk');
-const fetch = require('node-fetch');
 
 async function fetchSmaApr() {
   const url = 'https://eth-api.lido.fi/v1/protocol/steth/apr/sma';
@@ -69,7 +68,7 @@ async function getTVLInUSD(vaultAddress) {
   ).output;
 
   const address = "ethereum:0x0000000000000000000000000000000000000000";
-  const response = await fetch(`https://coins.llama.fi/prices/current/${address}`);
+  const response = await fetch(utils.getPriceApiUrl(`/prices/current/${address}`));
   const data = await response.json();
   const ethData = data.coins[address];
   if (!ethData) {
@@ -87,19 +86,22 @@ const getApy = async () => {
   const apyVal = await apy(vaultAddress)
   const tvlUSD = await getTVLInUSD(vaultAddress);
 
+  const WETH = '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2';
   const Eth = {
     pool: '0xfc85db895e070017ab9c84cb65b911d56b729ee9-ethereum',
     chain: utils.formatChain('Ethereum'),
     project: 'sharpe-magnum',
-    symbol: utils.formatSymbol('ETH'),
+    symbol: 'ETH',
     tvlUsd : tvlUSD,
     apy: apyVal,
+    underlyingTokens: [WETH],
   };
 
   return [Eth]; 
 };
 
 module.exports = {
+  protocolId: '2756',
   timetravel: false,
   apy: getApy,
   url: 'https://dapp.sharpe.ai/vaults/1/StEth',

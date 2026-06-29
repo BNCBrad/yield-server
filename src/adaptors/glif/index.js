@@ -3,6 +3,8 @@ const { ethers } = require('ethers');
 const utils = require('../utils');
 const sdk = require('@defillama/sdk');
 
+const WFIL = '0x60E1773636CF5E4A227d9AC24F20fEca034ee25A';
+
 const fetchApy = async () => {
   const [filPool, icntPool] = await Promise.all([
     getFilecoinPool(),
@@ -26,30 +28,34 @@ const getFilecoinPool = async () => {
 
   // <- Filecoin ->
   const filPriceKey = `coingecko:filecoin`;
-  const filPrice = (
-    await axios.get(`https://coins.llama.fi/prices/current/${filPriceKey}`)
-  ).data.coins[filPriceKey]?.price;
+  const filPrice = (await utils.getPriceApiData(`/prices/current/${filPriceKey}`)).coins[filPriceKey]?.price;
 
   return {
     pool: '0xe764Acf02D8B7c21d2B6A8f0a96C78541e0DC3fd-filecoin',
     chain: utils.formatChain('filecoin'),
     project: 'glif',
-    symbol: utils.formatSymbol('IFIL'),
+    symbol: 'IFIL',
     tvlUsd: tvlFIL * filPrice,
-    apy: Number(apyData.apy),
+    apyBase: Number(apyData.apy),
     poolMeta: 'GLIF',
+    underlyingTokens: [WFIL],
+    searchTokenOverride: '0xe764Acf02D8B7c21d2B6A8f0a96C78541e0DC3fd', // iFIL
+    isIntrinsicSource: true,
   };
 };
+
+const ICNT_BASE = '0xB1eC0c1c16f5d19Ce5d4cE6B5Cc2D0dDEC0A44E7';
 
 const getICNTPool = async () => {
   const icntPool = {
     pool: '0xAeD7C2eD7Bb84396AfCB55fF72c8F8E87FFb68f3-base',
     chain: utils.formatChain('base'),
     project: 'glif',
-    symbol: utils.formatSymbol('stICNT'),
+    symbol: 'stICNT',
     tvlUsd: 0,
     apy: 0,
     poolMeta: 'GLIF',
+    underlyingTokens: [ICNT_BASE],
   };
 
   try {
@@ -116,7 +122,7 @@ const getICNTPool = async () => {
     try {
       const icntPriceKey = `coingecko:impossible-cloud-network-token`;
       const priceResponse = await axios.get(
-        `https://coins.llama.fi/prices/current/${icntPriceKey}`,
+        utils.getPriceApiUrl(`/prices/current/${icntPriceKey}`),
         {
           timeout: 10000, // 10 second timeout
         }
@@ -136,6 +142,7 @@ const getICNTPool = async () => {
 };
 
 module.exports = {
+  protocolId: '2858',
   timetravel: false,
   apy: fetchApy,
   url: 'https://www.glif.io',

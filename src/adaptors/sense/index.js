@@ -1,6 +1,6 @@
 const utils = require('../utils');
 
-const superagent = require('superagent');
+const axios = require('axios');
 const { request, gql } = require('graphql-request');
 const { format } = require('date-fns');
 const { default: BigNumber } = require('bignumber.js');
@@ -77,14 +77,10 @@ const toISODate = (timestamp) =>
   new Date(timestamp * 1000).toISOString().substr(0, 10);
 
 const getPrices = async (addresses) => {
-  const prices = (
-    await superagent.get(
-      `https://coins.llama.fi/prices/current/${addresses
+  const prices = (await utils.getPriceApiData(`/prices/current/${addresses
         .map((address) => `ethereum:${address}`)
         .join(',')
-        .toLowerCase()}`
-    )
-  ).body.coins;
+        .toLowerCase()}`)).coins;
 
   const pricesObj = Object.entries(prices).reduce(
     (acc, [address, price]) => ({
@@ -178,7 +174,7 @@ const calculateSpaceData = async (pool, targetPrices) => {
 const main = async () => {
   let { pools } = await request(graphEndpoint, query);
 
-  const yields = (await superagent.get('https://yields.llama.fi/pools')).body
+  const yields = (await axios.get('https://yields.llama.fi/pools')).data
     .data;
 
   pools = pools.map((pool) => {
@@ -277,6 +273,7 @@ const main = async () => {
 };
 
 module.exports = {
+  protocolId: '2100',
   timetravel: false,
   apy: main,
   url: 'https://app.sense.finance',

@@ -1,5 +1,5 @@
 const sdk = require('@defillama/sdk');
-const superagent = require('superagent');
+const axios = require('axios');
 const { default: BigNumber } = require('bignumber.js');
 const utils = require('../utils');
 const GHNY = '0xa045e37a0d1dd3a45fefb8803d22457abc0a728a';
@@ -296,9 +296,7 @@ const getPrices = async (addresses) => {
     .map((address) => `bsc:${address}`)
     .join(',')
     .toLowerCase();
-  const prices = (
-    await superagent.get(`https://coins.llama.fi/prices/current/${coins}`)
-  ).body.coins;
+  const prices = (await utils.getPriceApiData(`/prices/current/${coins}`)).coins;
 
   const pricesObj = Object.entries(prices).reduce(
     (acc, [address, price]) => ({
@@ -604,6 +602,7 @@ async function apy() {
 }
 
 module.exports = {
+  protocolId: '2007',
   timetravel: false,
   apy,
   url: 'https://grizzly.fi/',

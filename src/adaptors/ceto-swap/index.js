@@ -218,6 +218,7 @@ async function getPoolsInfo() {
       project: PROJECT_SLUG,
       symbol,
       tvlUsd,
+      underlyingTokens: [info.token0, info.token1],
       url: 'https://cetoswap.com/#/farms',
     }
   }
@@ -237,5 +238,6 @@ async function getPoolsInfo() {
 
 
 module.exports = {
+  protocolId: '4603',
   apy: getPoolsInfo,
 };

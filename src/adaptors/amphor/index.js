@@ -56,37 +56,43 @@ const poolsFunction = async () => {
     target: wbtcVaultAddress,
   });
 
+  const usdc = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48';
+
   const usdcPool = {
     pool: usdcVaultAddress,
     chain: 'ethereum',
     project: 'amphor',
-    symbol: utils.formatSymbol('USDC'),
+    symbol: 'USDC',
     tvlUsd: Number(usdcTotalAsset.output)/1e6,
     apy: usdcApy,
+    underlyingTokens: [usdc],
   };
 
   const wstethPool = {
     pool: wstethVaultAddress,
     chain: 'ethereum',
     project: 'amphor',
-    symbol: utils.formatSymbol('WSTETH'),
+    symbol: 'wstETH',
     tvlUsd: (Number(wstethTotalAsset.output)/1e18) * prices[wsteth.toLowerCase()],
     apy: wstethApy,
+    underlyingTokens: [wsteth],
   };
 
   const wbtcPool = {
     pool: wbtcVaultAddress,
     chain: 'ethereum',
     project: 'amphor',
-    symbol: utils.formatSymbol('WBTC'),
+    symbol: 'WBTC',
     tvlUsd: (Number(wbtcTotalAsset.output)/1e8) * prices[wbtc.toLowerCase()],
     apy: wbtcApy,
+    underlyingTokens: [wbtc],
   };
 
   return [usdcPool, wstethPool, wbtcPool];
 };
 
 module.exports = {
+  protocolId: '3643',
   timetravel: false,
   apy: poolsFunction,
   url: 'https://app.amphor.io/earn',

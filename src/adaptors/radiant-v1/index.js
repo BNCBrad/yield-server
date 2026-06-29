@@ -1,4 +1,3 @@
-const superagent = require('superagent');
 
 const utils = require('../utils');
 const pools = require('./pools.json');
@@ -132,7 +131,7 @@ const topLvl = async (chainString, url) => {
       pool: p.id,
       chain: utils.formatChain(chainString),
       project: 'radiant-v1',
-      symbol: utils.formatSymbol(p.symbol),
+      symbol: p.symbol,
       tvlUsd: p.tvlUsd,
       apyBase: p.depositApy,
       apyReward: p.rewardApy * earlyExitPenalty,
@@ -159,6 +158,7 @@ const main = async () => {
 };
 
 module.exports = {
+  protocolId: '1922',
   timetravel: false,
   apy: main,
   url: 'https://app.radiant.capital/#/markets',

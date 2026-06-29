@@ -78,9 +78,10 @@ async function getPoolMvx(
     pool: pInflationTrackerAddress,
     chain: utils.formatChain(pChain),
     project: 'metavault.trade',
-    symbol: utils.formatSymbol('MVX'),
+    symbol: 'MVX',
     tvlUsd: tvlMvx,
     apy: apyFee + apyInflation,
+    underlyingTokens: pChain === 'polygon' ? [polygonMvxAddress] : undefined,
   };
 }
 
@@ -102,9 +103,14 @@ async function getPoolMvlp(
     pool: pInflationTrackerAddress,
     chain: utils.formatChain(pChain),
     project: 'metavault.trade',
-    symbol: utils.formatSymbol('MVLP'),
+    symbol: 'MVLP',
     tvlUsd: parseFloat(pTvl),
     apy: apyFee + apyInflation,
+    underlyingTokens: pChain === 'polygon' ? [
+      '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', // USDC.e
+      '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', // WETH
+      '0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6', // WBTC
+    ] : undefined,
   };
 }
 
@@ -114,9 +120,7 @@ const getPools = async () => {
   const priceKeys = ['metavault-trade', 'matic-network']
     .map((t) => `coingecko:${t}`)
     .join(',');
-  const { coins: priceDataRes } = await utils.getData(
-    `https://coins.llama.fi/prices/current/${priceKeys}`
-  );
+  const { coins: priceDataRes } = await utils.getPriceApiData(`/prices/current/${priceKeys}`);
   const priceData = {
     mvx: priceDataRes['coingecko:metavault-trade'] || { price: 0 },
     matic: priceDataRes['coingecko:matic-network'] || { price: 0 },
@@ -179,6 +183,7 @@ const getPools = async () => {
 };
 
 module.exports = {
+  protocolId: '1801',
   timetravel: false,
   apy: getPools,
   url: 'https://metavault.trade/earn',

@@ -1,32 +1,23 @@
-const sdk = require('@defillama/sdk');
-const BigNumber = require("bignumber.js")
 const utils = require('../utils');
 
-const veth = '0x4bc3263eb5bb2ef7ad9ab6fb68be80e43b43801f';
-const veth_1='0xc3d088842dcf02c13699f936bb83dfbbc6f721ab'
+const veth = '0xc3997ff81f2831929499c4eE4Ee4e0F08F42D4D8';
 
 const getApy = async () => {
-  const contract_veth =  (await sdk.api.erc20.totalSupply({ target: veth })).output / 1e18;
-  const contract_veth1 =  (await sdk.api.erc20.totalSupply({ target: veth_1 })).output / 1e18;
-  const contract_veth1_null_address_balance =  (await sdk.api.erc20.balanceOf({ owner:'0x000000000000000000000000000000000000dEaD',target: veth_1, })).output / 1e18;
-
   const vToken = await utils.getData('https://api.bifrost.app/api/site');
 
   const priceKeys = [
     'ethereum',
-    'filecoin',
     'polkadot',
     'kusama',
     'bifrost-native-coin',
     'moonbeam',
     'moonriver',
-    'astar'
+    'astar',
+    'manta-network',
   ]
     .map((t) => `coingecko:${t}`)
     .join(',');
-  const { coins: prices } = await utils.getData(
-    `https://coins.llama.fi/prices/current/${priceKeys}`
-  );
+  const { coins: prices } = await utils.getPriceApiData(`/prices/current/${priceKeys}`);
 
   const vDOT = {
     pool: 'polkadot-vdot',
@@ -37,6 +28,8 @@ const getApy = async () => {
     apyBase: Number(vToken.vDOT.apyBase),
     apyReward: Number(vToken.vDOT.apyReward),
     rewardTokens: ['DOT'],
+    underlyingTokens: ['coingecko:polkadot'],
+    isIntrinsicSource: true,
   };
 
   const vGLMR = {
@@ -48,17 +41,8 @@ const getApy = async () => {
     apyBase: Number(vToken.vGLMR.apyBase),
     apyReward: Number(vToken.vGLMR.apyReward),
     rewardTokens: ['GLMR'],
-  };
-
-  const vFIL = {
-    pool: 'filecoin-vfil',
-    chain: 'Filecoin',
-    project: 'bifrost-liquid-staking',
-    symbol: 'vFIL',
-    tvlUsd: vToken.vFIL.tvm * prices['coingecko:filecoin'].price,
-    apyBase: Number(vToken.vFIL.apyBase),
-    apyReward: Number(vToken.vFIL.apyReward),
-    rewardTokens: ['FIL'],
+    underlyingTokens: ['0xacc15dc74880c9944775448304b263d191c6077f'], // WGLMR
+    isIntrinsicSource: true,
   };
 
   const vASTR = {
@@ -70,6 +54,8 @@ const getApy = async () => {
     apyBase: Number(vToken.vASTR.apyBase),
     apyReward: Number(vToken.vASTR.apyReward),
     rewardTokens: ['ASTR'],
+    underlyingTokens: ['0xaeaaf0e2c81af264101b9129c00f4440ccf0f720'], // WASTR
+    isIntrinsicSource: true,
   };
 
   const vMOVR = {
@@ -81,6 +67,8 @@ const getApy = async () => {
     apyBase: Number(vToken.vMOVR.apyBase),
     apyReward: Number(vToken.vMOVR.apyReward),
     rewardTokens: ['MOVR'],
+    underlyingTokens: ['0x98878b06940ae243284ca214f92bb71a2b032b8a'], // WMOVR
+    isIntrinsicSource: true,
   };
 
   const vBNC = {
@@ -92,6 +80,8 @@ const getApy = async () => {
     apyBase: Number(vToken.vBNC.apyBase),
     apyReward: Number(vToken.vBNC.apyReward),
     rewardTokens: ['BNC'],
+    underlyingTokens: ['coingecko:bifrost-native-coin'],
+    isIntrinsicSource: true,
   };
 
   const vKSM = {
@@ -103,6 +93,21 @@ const getApy = async () => {
     apyBase: Number(vToken.vKSM.apyBase),
     apyReward: Number(vToken.vKSM.apyReward),
     rewardTokens: ['KSM'],
+    underlyingTokens: ['coingecko:kusama'],
+    isIntrinsicSource: true,
+  };
+
+  const vMANTA = {
+    pool: 'manta-vMANTA',
+    chain: 'manta',
+    project: 'bifrost-liquid-staking',
+    symbol: 'vMANTA',
+    tvlUsd: vToken.vMANTA.tvm * prices['coingecko:manta-network'].price,
+    apyBase: Number(vToken.vMANTA.apyBase),
+    apyReward: Number(vToken.vMANTA.apyReward),
+    rewardTokens: ['MANTA'],
+    underlyingTokens: ['0x0dc808adce2099a9f62aa87d9670745aba741746'], // WMANTA
+    isIntrinsicSource: true,
   };
 
   const vETH = {
@@ -110,17 +115,20 @@ const getApy = async () => {
     chain: 'ethereum',
     project: 'bifrost-liquid-staking',
     symbol: 'veth',
-    tvlUsd: new BigNumber(contract_veth).plus(contract_veth1).minus(contract_veth1_null_address_balance).toNumber() * prices['coingecko:ethereum'].price,
-    apyBase: vToken.vETH2.apyBase,
-    apyReward:vToken.vETH2.apyReward,
-    underlyingTokens: [veth],
+    tvlUsd: vToken.vETH.tvm * prices['coingecko:ethereum'].price,
+    apyBase: Number(vToken.vETH.apyBase),
+    apyReward: Number(vToken.vETH.apyReward),
+    underlyingTokens: ['0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'],
     rewardTokens: ['ETH'],
+    searchTokenOverride: veth,
+    isIntrinsicSource: true,
   };
 
-  return [vETH, vDOT, vGLMR, vMOVR, vKSM, vBNC, vFIL, vASTR];
+  return [vETH, vDOT, vGLMR, vMOVR, vKSM, vBNC, vASTR, vMANTA];
 };
 
 module.exports = {
+  protocolId: '1738',
   timetravel: false,
   apy: getApy,
   url: 'https://bifrost.app/vstaking',

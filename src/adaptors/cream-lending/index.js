@@ -1,6 +1,7 @@
 const sdk = require('@defillama/sdk');
 const axios = require('axios');
 const { ctoken } = require('./abi');
+const { getPriceApiData } = require('../utils');
 
 const BLOCKS_PER_DAY = 86400 / 12;
 
@@ -23,9 +24,7 @@ const calculateApy = (ratesPerBlock) => {
 
 const getPrices = async (addresses) => {
   const queires = addresses.map((address) => 'ethereum:' + address).join(',');
-  const prices = (
-    await axios.get(`https://coins.llama.fi/prices/current/${queires}`)
-  ).data.coins;
+  const prices = (await getPriceApiData(`/prices/current/${queires}`)).coins;
 
   return Object.values(prices).map((o) => o.price);
 };
@@ -81,6 +80,7 @@ const apy = async () => {
         (parseFloat(totalSupplies[0] * exchangeRates[0]) / 10 ** 24) *
         prices[0],
       totalBorrowUsd: (parseFloat(totalBorrows[0]) / 10 ** 6) * prices[0],
+      underlyingTokens: [underlying_addresses[0]],
     },
     {
       pool: CR_USDC.toLowerCase(),
@@ -93,11 +93,13 @@ const apy = async () => {
         (parseFloat(totalSupplies[1] * exchangeRates[1]) / 10 ** 24) *
         prices[1],
       totalBorrowUsd: (parseFloat(totalBorrows[1]) / 10 ** 6) * prices[1],
+      underlyingTokens: [underlying_addresses[1]],
     },
   ];
 };
 
 module.exports = {
+  protocolId: '121',
   timetravel: false,
   apy: apy,
   url: 'https://app.cream.finance/',

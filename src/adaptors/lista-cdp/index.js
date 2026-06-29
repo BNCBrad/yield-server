@@ -1,11 +1,12 @@
 const { default: BigNumber } = require('bignumber.js');
 const sdk = require('@defillama/sdk');
-const superagent = require('superagent');
+const axios = require('axios');
 const { collateralList, getIlks } = require('./config');
 
 // under src/adaptors, run `npm run test --adapter=lisusd` to test the adaptor
 const SECONDS_PER_YEAR = 365 * 24 * 60 * 60;
 const RAY = new BigNumber(10).pow(27);
+const LISUSD = '0x0782b6d8c4551B9760e74c0545a9bCD90bdc41E5';
 
 const INTERACTION = {
   address: '0xB68443Ee3e828baD1526b3e0Bdf2Dfc6b1975ec4',
@@ -158,7 +159,7 @@ const getApy = async () => {
     // );
     // console.log('Fetching prices for tokens:', tokenAddresses);
 
-    // const pricesResponse = await superagent.get(
+    // const pricesResponse = await axios.get(
     //   `https://coins.llama.fi/prices/current/${tokenAddresses.join(',')}`
     // );
     // const prices = pricesResponse.body.coins;
@@ -222,6 +223,7 @@ const getApy = async () => {
           });
 
           const debtCeiling = Number(vatIlksRes.output.line) / 1e45; // line is in RAD (45 decimals)
+          const availableBorrowUsd = Math.max(debtCeiling - debt, 0);
           return {
             pool: `${collateral.address}-bsc`.toLowerCase(),
             chain: 'bsc',
@@ -232,10 +234,14 @@ const getApy = async () => {
 
             totalSupplyUsd: Number(tvl) / 1e18,
             totalBorrowUsd: debt,
+            availableBorrowUsd,
             debtCeilingUsd: debtCeiling,
             mintedCoin: 'lisUSD',
+            borrowToken: LISUSD,
+            borrowable: debtCeiling > 0,
             ltv: collateralRate,
             apyBaseBorrow: aprRates || 0,
+            underlyingTokens: [(collateral.originAddress || collateral.address).toLowerCase()],
           };
         } catch (error) {
           console.error(`Error processing ${collateral.symbol}:`, error);
@@ -252,6 +258,7 @@ const getApy = async () => {
 };
 
 module.exports = {
+  protocolId: '2038',
   timetravel: false,
   apy: getApy,
   url: 'https://lista.org/',

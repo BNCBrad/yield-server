@@ -1,5 +1,4 @@
 const sdk = require('@defillama/sdk');
-const superagent = require('superagent');
 const { request, gql } = require('graphql-request');
 
 const utils = require('../utils');
@@ -77,7 +76,7 @@ const topLvl = async (chainString, timestamp, url) => {
 
   return data.map((p) => {
     const apyFee = Number(p.apy1d);
-    const symbol = utils.formatSymbol(`${p.token0.symbol}-${p.token1.symbol}`);
+    const symbol = `${p.token0.symbol}-${p.token1.symbol}`;
     return {
       pool: p.id,
       chain: utils.formatChain(chainString),
@@ -102,6 +101,7 @@ const main = async (timestamp = null) => {
 };
 
 module.exports = {
+  protocolId: '2393',
   timetravel: false,
   apy: main,
   url: 'https://traderjoexyz.com/pool',

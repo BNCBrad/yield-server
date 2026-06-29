@@ -1,4 +1,4 @@
-const superagent = require('superagent');
+const axios = require('axios');
 const { request, gql } = require('graphql-request');
 const sdk = require('@defillama/sdk');
 
@@ -48,13 +48,9 @@ const oraclePriceABI = {
 };
 
 const getPrices = async (addresses) => {
-  const _prices = (
-    await superagent.get(
-      `https://coins.llama.fi/prices/current/${addresses
+  const _prices = (await utils.getPriceApiData(`/prices/current/${addresses
         .join(',')
-        .toLowerCase()}`
-    )
-  ).body.coins;
+        .toLowerCase()}`)).coins;
 
   const zeroPrice = (
     await sdk.api.abi.call({

@@ -35,7 +35,7 @@ const getTvlPerLSD = async (response, ticker) => {
   return { savETHPool, tvl };
 };
 
-const topLvl = async (chainString, url, underlying) => {
+const topLvl = async (chainString, url) => {
   const aprData = (await axios.get(url)).data;
   const tickers = Object.keys(aprData).map((index) => aprData[index].Ticker);
 
@@ -92,9 +92,7 @@ const topLvl = async (chainString, url, underlying) => {
   );
 
   const priceKey = 'ethereum:0x0000000000000000000000000000000000000000';
-  const ethUSDPrice = (
-    await axios.get(`https://coins.llama.fi/prices/current/${priceKey}`)
-  ).data.coins[priceKey]?.price;
+  const ethUSDPrice = (await utils.getPriceApiData(`/prices/current/${priceKey}`)).coins[priceKey]?.price;
 
   let apyList = [],
     tvlUsd;
@@ -112,10 +110,12 @@ const topLvl = async (chainString, url, underlying) => {
         pool: `${result.savETHPool}-${chainString}`.toLowerCase(),
         chain: utils.formatChain(chainString),
         project: 'stakehouse',
-        symbol: utils.formatSymbol(Object.values(aprData)[i].Ticker),
+        symbol: Object.values(aprData)[i].Ticker,
         tvlUsd: tvlUsd,
         apyBase: Number(Object.values(aprData)[i].APR),
-        underlyingTokens: [underlying],
+        underlyingTokens: ['0x0000000000000000000000000000000000000000'],
+        searchTokenOverride: result.savETHPool,
+        isIntrinsicSource: true,
       });
 
       totalTvl += tvlUsd;
@@ -134,7 +134,9 @@ const topLvl = async (chainString, url, underlying) => {
     symbol: 'dETH',
     tvlUsd: totalTvl,
     apyBase: totalApy / noOfActiveLSDs,
-    underlyingTokens: [underlying],
+    underlyingTokens: ['0x0000000000000000000000000000000000000000'],
+    searchTokenOverride: '0x3d1E5Cf16077F349e999d6b21A4f646e83Cd90c5',
+    isIntrinsicSource: true,
   });
 
   return apyList;
@@ -143,14 +145,14 @@ const topLvl = async (chainString, url, underlying) => {
 const main = async () => {
   const data = await topLvl(
     'ethereum',
-    'https://etl.joinstakehouse.com/lsdWisePerformance',
-    '0x0000000000000000000000000000000000000000'
+    'https://etl.joinstakehouse.com/lsdWisePerformance'
   );
 
   return data.flat();
 };
 
 module.exports = {
+  protocolId: '2838',
   timetravel: false,
   apy: main,
   url: 'https://joinstakehouse.com/',

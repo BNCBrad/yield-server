@@ -2,9 +2,8 @@ const axios = require('axios');
 const { gql, request } = require('graphql-request');
 const sdk = require('@defillama/sdk');
 
-const { capitalizeFirstLetter } = require('../utils');
+const { capitalizeFirstLetter, getPriceApiUrl } = require('../utils');
 
-const ETHEREUM_WETH_TOKEN = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2';
 const ETHEREUM_OETH_TOKEN = '0x856c4efb76c1d1ae02e20ceb03a2a6a08b0b8dc3';
 const BASE_WETH_TOKEN = '0x4200000000000000000000000000000000000006';
 const BASE_SUPER_OETH_TOKEN = '0xDBFeFD2e8460a6Ee4955A68582F85708BAEA60A3';
@@ -32,6 +31,7 @@ const fetchPoolData = async ({
   symbol,
   project,
   underlyingToken,
+  tokenAddress,
   chainId,
 }) => {
   const query = gql`
@@ -52,7 +52,8 @@ const fetchPoolData = async ({
   };
 
   const apyData = await request(graphUrl, query, variables);
-  const apy = apyData.oTokenApies[0]?.apy7DayAvg * 100;
+  const rawApy = apyData.oTokenApies[0]?.apy7DayAvg;
+  const apy = rawApy != null ? rawApy * 100 : null;
 
   const totalValueEth = (
     await sdk.api.abi.call({
@@ -62,9 +63,9 @@ const fetchPoolData = async ({
     })
   ).output;
 
-  const ethPriceKey = `ethereum:${ETHEREUM_WETH_TOKEN}`;
+  const ethPriceKey = 'ethereum:0x0000000000000000000000000000000000000000';
   const ethPriceRes = await axios.get(
-    `https://coins.llama.fi/prices/current/${ethPriceKey}`
+    getPriceApiUrl(`/prices/current/${ethPriceKey}`)
   );
   const ethPrice = ethPriceRes.data.coins[ethPriceKey].price;
 
@@ -78,6 +79,7 @@ const fetchPoolData = async ({
     tvlUsd,
     apy,
     underlyingTokens: [underlyingToken],
+    searchTokenOverride: tokenAddress,
   };
 };
 
@@ -90,7 +92,9 @@ const apy = async () => {
       token: ETHEREUM_OETH_TOKEN,
       symbol: 'OETH',
       project: 'origin-ether',
-      underlyingToken: ETHEREUM_WETH_TOKEN,
+      underlyingToken: '0x0000000000000000000000000000000000000000',
+      tokenAddress: ETHEREUM_OETH_TOKEN,
+      isIntrinsicSource: true,
     }),
     fetchPoolData({
       chain: 'base',
@@ -99,7 +103,9 @@ const apy = async () => {
       token: BASE_SUPER_OETH_TOKEN,
       symbol: 'superOETHb',
       project: 'origin-ether',
-      underlyingToken: BASE_WETH_TOKEN,
+      underlyingToken: '0x0000000000000000000000000000000000000000',
+      tokenAddress: BASE_SUPER_OETH_TOKEN,
+      isIntrinsicSource: true,
     }),
     fetchPoolData({
       chain: 'plume_mainnet',
@@ -108,13 +114,16 @@ const apy = async () => {
       token: PLUME_SUPER_OETH_TOKEN,
       symbol: 'superOETHp',
       project: 'origin-ether',
-      underlyingToken: PLUME_WETH_TOKEN,
+      underlyingToken: '0x0000000000000000000000000000000000000000',
+      tokenAddress: PLUME_SUPER_OETH_TOKEN,
+      isIntrinsicSource: true,
     }),
   ]);
   return pools.filter((i) => i.status === 'fulfilled').map((i) => i.value);
 };
 
 module.exports = {
+  protocolId: '2950',
   timetravel: false,
   apy,
   url: 'https://originprotocol.com',

@@ -10,9 +10,7 @@ const getPools = async () => {
 
   const priceKey = 'coingecko:polkadot';
 
-  const { coins: prices } = await utils.getData(
-    `https://coins.llama.fi/prices/current/${priceKey}`
-  );
+  const { coins: prices } = await utils.getPriceApiData(`/prices/current/${priceKey}`);
   const dotUsd = prices[priceKey].price;
 
   const tdot = {
@@ -22,12 +20,14 @@ const getPools = async () => {
     symbol: 'tDOT',
     tvlUsd: tdotStats.total * dotUsd,
     apyBase: Number(tdotApr['sa://0']) * 100,
+    underlyingTokens: ['DOT'],
   };
 
   return [tdot];
 };
 
 module.exports = {
+  protocolId: '1900',
   timetravel: false,
   apy: getPools,
   url: 'https://app.taigaprotocol.io/',

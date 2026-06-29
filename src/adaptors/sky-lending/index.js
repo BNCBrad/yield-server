@@ -4,6 +4,7 @@ const sdk = require('@defillama/sdk');
 const axios = require('axios');
 
 const abiSUSDS = require('./abiSUSDS.json');
+const { getPriceApiData } = require('../utils');
 
 const HOUR = 60 * 60;
 const DAY = 24 * HOUR;
@@ -187,6 +188,24 @@ const MCD_VAT = {
       stateMutability: 'view',
       type: 'function',
     },
+    Line: {
+      constant: true,
+      inputs: [],
+      name: 'Line',
+      outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+      payable: false,
+      stateMutability: 'view',
+      type: 'function',
+    },
+    debt: {
+      constant: true,
+      inputs: [],
+      name: 'debt',
+      outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+      payable: false,
+      stateMutability: 'view',
+      type: 'function',
+    },
   },
 };
 
@@ -208,7 +227,9 @@ const MCD_SPOT = {
   },
 };
 
-MCD_POT = {
+const DAI = '0x6B175474E89094C44Da98b954EedeAC495271d0F';
+
+const MCD_POT = {
   address: '0x197e90f9fad81970ba7976f33cbd77088e5d7cf7',
   abis: {
     Pie: {
@@ -254,17 +275,19 @@ async function dsr() {
     )
   );
   const tvlUsd = BigNumber(Pie).times(chi).div(1e18).div(RAY); // check against https://makerburn.com/#/
-  const apy =
+  const apyBase =
     (BigNumber(dsr).div(RAY).toNumber() ** (60 * 60 * 24 * 365) - 1) * 100;
 
   return {
-    pool: MCD_POT.address,
+    pool: '0x83F20F44975D03b1b09e64809B757c47f942BEeA',
     project: 'sky-lending',
-    symbol: 'DAI',
+    symbol: 'sDAI',
     chain: 'ethereum',
-    poolMeta: 'DSR',
-    apy,
+    token: '0x83F20F44975D03b1b09e64809B757c47f942BEeA',
+    apyBase,
     tvlUsd: tvlUsd.toNumber(),
+    underlyingTokens: [DAI],
+    isIntrinsicSource: true,
   };
 }
 
@@ -273,13 +296,9 @@ function onlyUnique(value, index, self) {
 }
 
 const getPrices = async (addresses) => {
-  const prices = (
-    await axios.get(
-      `https://coins.llama.fi/prices/current/${addresses
+  const prices = (await getPriceApiData(`/prices/current/${addresses
         .join(',')
-        .toLowerCase()}`
-    )
-  ).data.coins;
+        .toLowerCase()}`)).coins;
 
   const pricesObj = Object.entries(prices).reduce(
     (acc, [address, price]) => ({
@@ -337,6 +356,24 @@ const main = async () => {
       requery: true,
     })
   ).output.map((x) => x.output);
+  const [globalDebtCeiling, globalDebt] = await Promise.all(
+    ['Line', 'debt'].map(
+      async (name) =>
+        new BigNumber(
+          (
+            await sdk.api.abi.call({
+              target: MCD_VAT.address,
+              abi: MCD_VAT.abis[name],
+              chain: 'ethereum',
+            })
+          ).output
+        ).div(1e45)
+    )
+  );
+  const globalAvailableBorrowUsd = BigNumber.maximum(
+    globalDebtCeiling.minus(globalDebt),
+    0
+  );
   const spots = (
     await sdk.api.abi.multiCall({
       calls: ilkIds.map((ilkId) => ({
@@ -377,6 +414,10 @@ const main = async () => {
       const debtScalingFactor = new BigNumber(ilks[index].rate).div(1e27);
       const totalBorrowUsd = debtScalingFactor.multipliedBy(art);
       const debtCeilingUsd = new BigNumber(ilks[index].line).div(1e45);
+      const availableBorrowUsd = BigNumber.minimum(
+        BigNumber.maximum(debtCeilingUsd.minus(totalBorrowUsd), 0),
+        globalAvailableBorrowUsd
+      );
       const tvlUsd = new BigNumber(tokenBalances[index])
         .dividedBy(new BigNumber(10).pow(decimals[index]))
         .multipliedBy(prices[gems[index].toLowerCase()])
@@ -388,6 +429,7 @@ const main = async () => {
         project: 'sky-lending',
         symbol: symbols[index],
         chain: 'ethereum',
+        token: null,
         poolMeta: !blackList.includes(ilkIds[index])
           ? ethers.utils.parseBytes32String(ilkIds[index])
           : '',
@@ -397,9 +439,13 @@ const main = async () => {
         apyBaseBorrow: stabilityFee.toNumber() * 100,
         totalSupplyUsd: tvlUsd,
         totalBorrowUsd: totalBorrowUsd.toNumber(),
+        availableBorrowUsd: availableBorrowUsd.toNumber(),
         debtCeilingUsd: debtCeilingUsd.toNumber(),
         mintedCoin: 'DAI',
+        borrowToken: DAI,
+        borrowable: debtCeilingUsd.gt(0),
         ltv: 1 / Number(liquidationRatio.toNumber()),
+        underlyingTokens: [gems[index]],
       };
     })
     .concat([await dsrPool])
@@ -409,50 +455,77 @@ const main = async () => {
 };
 
 const susdsAPY = async () => {
-  const USDS = '0xdC035D45d973E3EC169d2276DDab16f1e407384F';
-  const sUSDS = '0xa3931d71877C0E7a3148CB7Eb4463524FEc27fbD';
+  const ETH_SUSDS = '0xa3931d71877C0E7a3148CB7Eb4463524FEc27fbD';
+  const ssrAbi = abiSUSDS.find((m) => m.name === 'ssr');
+  const secPerYear = 60 * 60 * 24 * 365;
 
-  const totalSupply =
-    (
-      await sdk.api.abi.call({
-        target: sUSDS,
-        abi: 'erc20:totalSupply',
-      })
-    ).output / 1e18;
-
-  const key = `ethereum:${sUSDS}`;
-  const price = (
-    await axios.get(`https://coins.llama.fi/prices/current/${key}`)
-  ).data.coins[key].price;
-
-  // sky savings rate
+  // SSR is global (set by Sky governance on Ethereum), use for all chains
   const RAY = 1e27;
   const ssr =
     (
       await sdk.api.abi.call({
-        target: sUSDS,
-        abi: abiSUSDS.find((m) => m.name === 'ssr'),
+        target: ETH_SUSDS,
+        abi: ssrAbi,
+        chain: 'ethereum',
       })
     ).output / RAY;
 
-  const secPerYear = 60 * 60 * 24 * 365;
-
-  // https://github.com/makerdao/sdai/blob/susds/src/SUsds.sol
   const nChi = Math.pow(ssr, secPerYear) * RAY;
+  const apyBase = (nChi / RAY - 1) * 100;
 
-  const apy = (nChi / RAY - 1) * 100;
-
-  return [
+  const configs = [
     {
-      pool: sUSDS,
-      symbol: 'SUSDS',
-      project: 'sky-lending',
       chain: 'ethereum',
-      tvlUsd: totalSupply * price,
-      apy,
-      underlyingTokens: [USDS],
+      sUSDS: ETH_SUSDS,
+      USDS: '0xdC035D45d973E3EC169d2276DDab16f1e407384F',
+    },
+    {
+      chain: 'arbitrum',
+      sUSDS: '0xddb46999f8891663a8f2828d25298f70416d7610',
+      USDS: '0x6491c05a82219b8d1479057361ff1654749b876b',
     },
   ];
+
+  const priceKeys = configs
+    .map(({ chain, sUSDS }) => `${chain}:${sUSDS}`)
+    .join(',');
+  const prices = (await getPriceApiData(`/prices/current/${priceKeys}`)).coins;
+
+  const pools = await Promise.all(
+    configs.map(async ({ chain, sUSDS, USDS }) => {
+      const totalSupply =
+        (
+          await sdk.api.abi.call({
+            target: sUSDS,
+            abi: 'erc20:totalSupply',
+            chain,
+          })
+        ).output / 1e18;
+
+      const key = `${chain}:${sUSDS}`;
+      const price = prices[key]?.price;
+      if (!price) return null;
+
+      const pool = {
+        pool: sUSDS,
+        symbol: 'SUSDS',
+        project: 'sky-lending',
+        chain,
+        token: sUSDS,
+        tvlUsd: totalSupply * price,
+        apyBase,
+        underlyingTokens: [USDS],
+      };
+
+      if (chain === 'ethereum') {
+        pool.isIntrinsicSource = true;
+      }
+
+      return pool;
+    })
+  );
+
+  return pools.filter(Boolean);
 };
 
 const apy = async () => {
@@ -461,6 +534,7 @@ const apy = async () => {
 };
 
 module.exports = {
+  protocolId: '118',
   apy,
   url: 'https://sky.money/',
 };

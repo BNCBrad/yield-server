@@ -24,6 +24,7 @@ const getApy = async () => {
           symbol: t.symbol,
           apyBase: Number(t.apr),
           tvlUsd: Number(t.poolInfo.totalLpAmount) / 1e3,
+          underlyingTokens: t.tokenAddress ? [t.tokenAddress] : undefined,
         };
       });
     })
@@ -32,6 +33,7 @@ const getApy = async () => {
 };
 
 module.exports = {
+  protocolId: '577',
   apy: getApy,
   url: 'https://stake.allbridge.io/?chain=SOL',
 };

@@ -1,5 +1,12 @@
 const { get, post } = require('./http-helper')
 
+const CARDANO_COINGECKO = {
+  iUSD: 'coingecko:iusd',
+  iBTC: 'coingecko:ibtc-2',
+  iETH: 'coingecko:indigo-protocol-ieth',
+  iSOL: 'coingecko:solana',
+};
+
 // Get Pool Data for each Stability Pool
 async function apy() {
   const stabilityPools = await fetchStabilityPools();
@@ -24,7 +31,7 @@ async function apy() {
       symbol: pool.asset,
       apyReward: (adaApy || 0) + (indyApy || 0),
       rewardTokens: ['ADA', 'INDY'],
-      underlyingTokens: [pool.asset],
+      underlyingTokens: CARDANO_COINGECKO[pool.asset] ? [CARDANO_COINGECKO[pool.asset]] : undefined,
       tvlUsd: Number(tvlUsd),
     };
   }));
@@ -77,6 +84,7 @@ async function calculateTvlUsd(assetAnalytics, adaPriceUsd) {
 }
 
 module.exports = {
+  protocolId: '2309',
   timetravel: false,
   apy: apy,
   url: 'https://app.indigoprotocol.io/stability-pools',

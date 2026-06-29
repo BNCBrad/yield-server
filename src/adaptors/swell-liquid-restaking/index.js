@@ -1,11 +1,15 @@
 const axios = require('axios');
 const sdk = require('@defillama/sdk');
-const ethers = require('ethers');
 const { BigNumber } = require('ethers');
 
 const abi = require('./abi.json');
+const { getPriceApiData } = require('../utils');
 
 const rswETH = '0xFAe103DC9cf190eD75350761e95403b7b8aFa6c0';
+
+const EVENTS = {
+  Reprice: 'event Reprice(uint256 newEthReserves, uint256 newRswETHToETHRate, uint256 nodeOperatorRewards, uint256 swellTreasuryRewards, uint256 totalETHDeposited)',
+};
 
 const apy = async () => {
   const totalSupply =
@@ -18,28 +22,26 @@ const apy = async () => {
 
   const repriceEvents = await get7dRepriceEvents()
   // sort by blockNumber descending
-  repriceEvents.sort((a,b) => (b.blockNumber - a.blockNumber));
+  repriceEvents.sort((a,b) => Number(b.blockNumber) - Number(a.blockNumber));
 
   const eventNow = repriceEvents[0];
   const eventPrev = repriceEvents[1];
   const { closestBefore, closestAfter, timestamp7DaysAgo } = await getCloseestTo7dAgo(repriceEvents);
 
-  const interpolatedRate = await interpolate7d(closestBefore, closestAfter, timestamp7DaysAgo);
-  const startTime = await sdk.api.util.getTimestamp(eventPrev.blockNumber, "ethereum");
-  const endTime = await sdk.api.util.getTimestamp(eventNow.blockNumber, "ethereum");
-
   const apr1d = await calcRate(eventNow, eventPrev);
 
-  // Calculate 7-day APR using BigNumber operations
-  const currentRate = BigNumber.from(eventNow.decoded.newRswETHToETHRate.toString());
-  const sevenDayRateChange = currentRate.mul(BigNumber.from(10).pow(18)).div(interpolatedRate).sub(BigNumber.from(10).pow(18));
-  const timeElapsed = BigNumber.from(endTime - timestamp7DaysAgo);
-  const apr7d = sevenDayRateChange.mul(365 * 86400).div(timeElapsed).mul(100).toString() / 1e18;
+  let apr7d;
+  if (closestBefore && closestAfter) {
+    const interpolatedRate = await interpolate7d(closestBefore, closestAfter, timestamp7DaysAgo);
+    const endTime = await sdk.api.util.getTimestamp(eventNow.blockNumber, "ethereum");
+    const currentRate = BigNumber.from(eventNow.decoded.newRswETHToETHRate.toString());
+    const sevenDayRateChange = currentRate.mul(BigNumber.from(10).pow(18)).div(interpolatedRate).sub(BigNumber.from(10).pow(18));
+    const timeElapsed = BigNumber.from(endTime - timestamp7DaysAgo);
+    apr7d = sevenDayRateChange.mul(365 * 86400).div(timeElapsed).mul(100).toString() / 1e18;
+  }
 
   const priceKey = `ethereum:${rswETH}`;
-  const ethPrice = (
-    await axios.get(`https://coins.llama.fi/prices/current/${priceKey}`)
-  ).data.coins[priceKey].price;
+  const ethPrice = (await getPriceApiData(`/prices/current/${priceKey}`)).coins[priceKey].price;
 
   const rate = (await sdk.api.abi.call({
     target: rswETH,
@@ -55,13 +57,17 @@ const apy = async () => {
       symbol: 'rswETH',
       tvlUsd: tvlUsd,
       apyBase: apr1d,
-      apyBase7d: apr7d,
+      ...(apr7d !== undefined && { apyBase7d: apr7d }),
+      ...(rate > 0 && { pricePerShare: rate }),
       underlyingTokens: ['0x0000000000000000000000000000000000000000'],
+      searchTokenOverride: rswETH,
+      isIntrinsicSource: true,
     },
   ];
 };
 
 module.exports = {
+  protocolId: '4078',
   apy,
   timetravel: false,
   url: 'https://app.swellnetwork.io/stake/rsweth',
@@ -74,42 +80,29 @@ async function get7dRepriceEvents() {
   const timestamp14dayAgo = timestampNow - 86400 * 14;
 
   const blockNow = await sdk.api.util.getLatestBlock("ethereum")
-  const block14dayAgo = (
-    await axios.get(`https://coins.llama.fi/block/ethereum/${timestamp14dayAgo}`)
-  ).data.height;
+  const block14dayAgo = (await getPriceApiData(`/block/ethereum/${timestamp14dayAgo}`)).height;
 
-  const iface = new ethers.utils.Interface([
-    'event Reprice (uint256 newEthReserves, uint256 newRswETHToETHRate, uint256 nodeOperatorRewards, uint256 swellTreasuryRewards, uint256 totalETHDeposited)',
-  ]);
+  const repriceEvents = await sdk.getEventLogs({
+    target: rswETH,
+    eventAbi: EVENTS.Reprice,
+    fromBlock: block14dayAgo,
+    toBlock: blockNow.number,
+    chain: "ethereum",
+  });
 
-  const repriceEvents = (
-    await sdk.api2.util.getLogs({
-      target: rswETH,
-      topic: '',
-      fromBlock: block14dayAgo,
-      toBlock: blockNow.number,
-      keys: [],
-      topics: [iface.getEventTopic('Reprice')],
-      chain: "ethereum",
-      entireLog: true,
-    })
-  ).output
-    .filter((ev) => !ev.removed)
-    .map((ev) => {
-        ev.decoded = iface.parseLog(ev).args
-        return ev
-      }
-    );
-
-  return repriceEvents;
+  // Map args to decoded for backwards compatibility with calcRate and interpolate functions
+  return repriceEvents.map((ev) => {
+    ev.decoded = ev.args;
+    return ev;
+  });
 }
 
 async function calcRate(
   eventNow,
   eventPrev
 ) {
-  const rateDelta = (eventNow.decoded[1]/eventPrev.decoded[1]) - 1;
-  const blockDelta = (eventNow.blockNumber - eventPrev.blockNumber);
+  const rateDelta = (Number(eventNow.decoded[1])/Number(eventPrev.decoded[1])) - 1;
+  const blockDelta = Number(eventNow.blockNumber) - Number(eventPrev.blockNumber);
   const timeDeltaSeconds = blockDelta*12; // assuming 12 seconds per block
   const apr1d = (rateDelta*365*100)/(timeDeltaSeconds/86400);
 

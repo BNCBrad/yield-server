@@ -1,8 +1,9 @@
 const utils = require('../utils');
-const { fetchURL } = require('../../helper/utils');
 
 const STAKING_ADDRESS = 'TGrdCu9fu8csFmQptVE25fDzFmPU9epamH';
 const REVENUE_ADDRESS = 'TWisShDfhZGXLy1s5uoWjyyucSKwfkohu7';
+// WTRX (Wrapped TRX) on Tron
+const WTRX = 'TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR';
 
 const getCurrentStake = async () => {
   const postdata = {
@@ -22,7 +23,7 @@ const getRevenueToday = async () => {
   let totalRevenue = 0;
   let startFrom = 0;
   while (true) {
-    const { data } = await fetchURL(`${url}&start=${startFrom}`);
+    const data = await utils.getData(`${url}&start=${startFrom}`);
     const transfers = data.data;
     if (transfers.length === 0) {
       break;
@@ -44,13 +45,15 @@ const poolsFunction = async () => {
     pool: STAKING_ADDRESS,
     chain: utils.formatChain('tron'),
     project: 'strx-finance',
-    symbol: utils.formatSymbol('TRX'),
+    symbol: 'TRX',
     tvlUsd: dataTvl,
-    apyBase: dailyAPY > 0 ? Number(dailyAPY) : 0
+    apyBase: dailyAPY > 0 ? Number(dailyAPY) : 0,
+    underlyingTokens: [WTRX],
   }];
 };
 
 module.exports = {
+  protocolId: '2300',
   timetravel: false,
   apy: poolsFunction,
   url: "https://app.strx.finance",

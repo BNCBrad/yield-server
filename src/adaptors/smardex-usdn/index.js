@@ -21,9 +21,7 @@ const CONFIGS = [
 
 const getUsdnPriceAtTimestamp = async (chainConfig, timestamp) => {
   const prices = (
-    await utils.getData(
-      `https://coins.llama.fi/prices/historical/${timestamp}/${chainConfig.chain}:${chainConfig.USDN_TOKEN_ADDRESS}`
-    )
+    await utils.getPriceApiData(`/prices/historical/${timestamp}/${chainConfig.chain}:${chainConfig.USDN_TOKEN_ADDRESS}`)
   ).coins;
   const usdnResult = prices[`${chainConfig.chain}:${chainConfig.USDN_TOKEN_ADDRESS}`];
   if (usdnResult === undefined) {
@@ -128,6 +126,7 @@ const computeYield = async (
     chain: utils.formatChain(chainConfig.chain),
     tvlUsd: totalSupply,
     apyBase,
+    underlyingTokens: [chainConfig.WUSDN_TOKEN_ADDRESS],
   };
 }
 
@@ -150,6 +149,7 @@ const main = async (timestamp = null) => {
 };
 
 module.exports = {
+  protocolId: '6238',
   timetravel: true,
   apy: main,
   url: 'https://smardex.io/liquidity',

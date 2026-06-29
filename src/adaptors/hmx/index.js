@@ -1,4 +1,4 @@
-const superagent = require('superagent');
+const axios = require('axios');
 const sdk = require('@defillama/sdk');
 const BigNumber = require('bignumber.js');
 
@@ -12,13 +12,9 @@ const arbUrl = 'https://arbitrum-gapi.hmx.org/v1/apr-pools';
 const blastUrl = 'https://blast-gapi.hmx.org/v1/apr-pools';
 
 const getPrices = async (addresses) => {
-  const prices = (
-    await superagent.get(
-      `https://coins.llama.fi/prices/current/${addresses
+  const prices = (await utils.getPriceApiData(`/prices/current/${addresses
         .join(',')
-        .toLowerCase()}`
-    )
-  ).body.coins;
+        .toLowerCase()}`)).coins;
 
   const pricesBySymbol = Object.entries(prices).reduce(
     (acc, [name, price]) => ({
@@ -253,6 +249,7 @@ const apy = async () => {
 };
 
 module.exports = {
+  protocolId: '2296',
   timetravel: false,
   apy: apy,
 };

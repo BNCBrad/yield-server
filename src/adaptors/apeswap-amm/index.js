@@ -1,6 +1,5 @@
 const axios = require('axios');
 const sdk = require('@defillama/sdk');
-const superagent = require('superagent');
 const { default: BigNumber } = require('bignumber.js');
 
 const lpTokenABI = require('./abis/abi-lp-token.json');
@@ -50,11 +49,7 @@ const getPairInfo = async (pairs, apiUrl) => {
 
 const getPrices = async (addresses, chain) => {
   const addy = addresses.map((address) => `${chain}:${address}`).join(',');
-  const prices = (
-    await superagent.get(
-      `https://coins.llama.fi/prices/current/${addy.toLowerCase()}`
-    )
-  ).body.coins;
+  const prices = (await utils.getPriceApiData(`/prices/current/${addy.toLowerCase()}`)).coins;
 
   const pricesObj = Object.entries(prices).reduce(
     (acc, [address, price]) => ({
@@ -429,6 +424,7 @@ const main = async () => {
     .filter((p) => utils.keepFinite(p));
 };
 module.exports = {
+  protocolId: '398',
   timetravel: false,
   apy: main,
   url: 'https://apeswap.finance/farms',

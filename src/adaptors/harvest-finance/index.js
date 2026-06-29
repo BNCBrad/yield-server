@@ -1,7 +1,6 @@
-const superagent = require('superagent');
+const axios = require('axios');
 
 const utils = require('../utils');
-const { readFromS3 } = require('../../utils/s3');
 // no longer needed, see note below
 const farmsUrl =
   'https://api.harvest.finance/vaults?key=41e90ced-d559-4433-b390-af424fdc76d6';
@@ -51,17 +50,9 @@ async function apy() {
   let allVaults = [];
   let specialVaults = [];
 
-  // note (!) calling their api via aws lambda stopped working due to cloudflare bot protection.
-  // instead, we use a python lambda which bypasses cloudflare
-  // and stores the output to s3 (i tried node js packages, none of them worked; the repo to the
-  // lambda
-  const farmsResponse = (await superagent.get(farmsUrl)).body;
-  const poolsResponse = (await superagent.get(poolsUrl)).body;
-  const statsResponse = (await superagent.get(statsUrl)).body;
-  // const data = await readFromS3('llama-apy-prod-data', 'harvest_api_data.json');
-  // const farmsResponse = data['vaults'];
-  // const poolsResponse = data['pools'];
-  // const statsResponse = data['token-stats'];
+  const farmsResponse = (await axios.get(farmsUrl)).data;
+  const poolsResponse = (await axios.get(poolsUrl)).data;
+  const statsResponse = (await axios.get(statsUrl)).data;
 
   let specialVaultIds = ['farm-grain', 'farm-weth'];
   specialVaults = specialVaultIds.map((vaultId) => {
@@ -74,7 +65,7 @@ async function apy() {
       pool: pool.contractAddress,
       chain: 'Ethereum',
       project: 'harvest-finance',
-      symbol: utils.formatSymbol(vaultId).replace(/[{()}]/g, ''),
+      symbol: vaultId.replace(/[{()}]/g, ''),
       tvlUsd:
         vaultId === 'farm-weth'
           ? Number(pool.lpTokenData.liquidity)
@@ -126,6 +117,7 @@ async function apy() {
         apyBase,
         apyReward: aggregateRewardApys(v, poolsResponse[chain]),
         rewardTokens,
+        underlyingTokens: v.tokenAddress ? [v.tokenAddress] : undefined,
         poolMeta: v.platform ? `${v.platform[0]}` : null,
         url: `https://app.harvest.finance/${url_config[chain]}/${v.vaultAddress}`,
       };
@@ -151,6 +143,7 @@ async function apy() {
 }
 
 module.exports = {
+  protocolId: '112',
   timetravel: false,
   apy,
 };

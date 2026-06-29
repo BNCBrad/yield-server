@@ -4,6 +4,7 @@ const sTlosAbi = require('./sTlos.json');
 const axios = require('axios');
 
 const sTLOS = '0xb4b01216a5bc8f1c8a33cd990a1239030e60c905';
+const WTLOS = '0xD102cE6A4dB07D247fcc28F366A623Df0938CA9E'; // Wrapped TLOS
 
 async function poolsFunction(timestamp, block, chainBlocks) {
   const pooledTLOS =
@@ -16,9 +17,7 @@ async function poolsFunction(timestamp, block, chainBlocks) {
     ).output / 1e18;
 
   const priceKey = 'coingecko:telos';
-  const telosPrice = (
-    await axios.get(`https://coins.llama.fi/prices/current/${priceKey}`)
-  ).data.coins[priceKey].price;
+  const telosPrice = (await utils.getPriceApiData(`/prices/current/${priceKey}`)).coins[priceKey].price;
 
   const apyPercentage = (await axios.get('https://api.telos.net/v1/apy/evm'))
     .data;
@@ -28,14 +27,18 @@ async function poolsFunction(timestamp, block, chainBlocks) {
       pool: sTLOS,
       chain: utils.formatChain('telos'),
       project: 'stlos-liquid-staking',
-      symbol: utils.formatSymbol('sTLOS'),
+      symbol: 'sTLOS',
       tvlUsd: pooledTLOS * telosPrice,
       apyBase: apyPercentage,
+      underlyingTokens: [WTLOS],
+      searchTokenOverride: sTLOS,
+      isIntrinsicSource: true,
     },
   ];
 }
 
 module.exports = {
+  protocolId: '2212',
   timetravel: false,
   apy: poolsFunction,
   url: 'https://www.teloscan.io/staking',

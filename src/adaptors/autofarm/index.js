@@ -1,4 +1,4 @@
-const superagent = require("superagent");
+const axios = require("axios");
 const utils = require("../utils");
 
 const chainsMapping = {
@@ -25,7 +25,7 @@ const chainsMapping = {
 
 async function getAutofarmBuildId() {
   const homeUrl = "https://autofarm.network/";
-  const home = (await superagent.get(homeUrl)).text;
+  const home = (await axios.get(homeUrl)).data;
   const start = home.indexOf('"buildId":');
   return home.slice(start + 11, start + 32);
 }
@@ -33,7 +33,7 @@ async function getAutofarmBuildId() {
 async function getMetadataRoot() {
   const buildId = await getAutofarmBuildId();
   const url = `https://autofarm.network/_next/data/${buildId}/vaults.json`;
-  return (await superagent.get(url)).body.pageProps.initialFarmDataByChain;
+  return (await axios.get(url)).data.pageProps.initialFarmDataByChain;
 }
 
 function formatPoolsApyChain(chain) {
@@ -47,7 +47,7 @@ async function getPoolsApy(chain) {
   const poolsUrl = `https://static.autofarm.network/${formatPoolsApyChain(
     chain
   )}/farm_data_live.json`;
-  return (await superagent.get(poolsUrl)).body;
+  return (await axios.get(poolsUrl)).data;
 }
 
 function cleanLP(text) {
@@ -59,7 +59,7 @@ function autofarmApyItem(chain, item) {
     pool: `${item.wantAddress.toLowerCase()}-${item.pid}-${chainsMapping[chain]}-autofarm`,
     chain: utils.formatChain(chainsMapping[chain]),
     project: "autofarm",
-    symbol: utils.formatSymbol(cleanLP(item.wantName)),
+    symbol: cleanLP(item.wantName),
     poolMeta: item.farmName,
     tvlUsd: Number(item.poolWantTVL),
     apy: item.APY_total * 100,
@@ -98,6 +98,7 @@ async function autofarmApyAllItems() {
 }
 
 module.exports = {
+  protocolId: '209',
   timetravel: false,
   apy: autofarmApyAllItems,
   url: "https://autofarm.network/",

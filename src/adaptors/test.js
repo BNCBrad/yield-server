@@ -8,9 +8,11 @@ const baseFields = {
 const adapter = global.adapter;
 const apy = global.apy;
 const poolsUrl = global.poolsUrl;
+const protocolId = global.protocolId;
 
 const uniquePoolIdentifiersDB = global.uniquePoolIdentifiersDB;
 const protocols = global.protocolsSlug;
+const protocolsBySlug = global.protocolsBySlug;
 
 // fast mode: only ensure adapter main function executed
 if (process.env.npm_config_fast) {
@@ -23,6 +25,9 @@ if (process.env.npm_config_fast) {
 } else {
 
 describe(`Running ${process.env.npm_config_adapter} Test`, () => {
+  const isRoutingOnlyPool = (pool) =>
+    ['routing_collateral', 'routing_reserve'].includes(pool.poolKind);
+
   describe('Check for allowed field names', () => {
     const optionalFields = [
       'apy',
@@ -40,7 +45,9 @@ describe(`Running ${process.env.npm_config_adapter} Test`, () => {
       'borrowable',
       'borrowFactor',
       'debtCeilingUsd',
+      'availableBorrowUsd',
       'mintedCoin',
+      'borrowToken',
       'apyBase7d',
       'apyRewardFake',
       'apyRewardBorrowFake',
@@ -48,15 +55,21 @@ describe(`Running ${process.env.npm_config_adapter} Test`, () => {
       'volumeUsd1d',
       'volumeUsd7d',
       'apyBaseInception',
+      'searchTokenOverride',
+      'isIntrinsicSource',
+      'token',
+      'pricePerShare',
+      'routeGroupKey',
+      'underlyingStateKey',
+      'poolKind',
     ];
     const fields = [...Object.keys(baseFields), ...optionalFields, 'tvlUsd'];
     apy.forEach((pool) => {
-      test(`Expects pool id ${
-        pool.pool
-      } to contain only allowed keys: ${fields} and has: ${Object.keys(
-        pool
-      )}`, () => {
-        expect(Object.keys(pool).every((f) => fields.includes(f))).toBe(true);
+      const disallowedKeys = Object.keys(pool).filter(
+        (f) => !fields.includes(f)
+      );
+      test(`Pool ${pool.pool} should only contain allowed keys`, () => {
+        expect(disallowedKeys).toEqual([]);
       });
     });
   });
@@ -68,8 +81,13 @@ describe(`Running ${process.env.npm_config_adapter} Test`, () => {
 
   test('Check for unique pool ids', () => {
     const poolIds = apy.map((pool) => pool.pool);
-    const uniquePoolIds = [...new Set(poolIds)];
-    expect(poolIds).toEqual(uniquePoolIds);
+    const seen = new Set();
+    const duplicates = poolIds.filter((id) => {
+      if (seen.has(id)) return true;
+      seen.add(id);
+      return false;
+    });
+    expect(duplicates).toEqual([]);
   });
 
   describe('Check apy data types', () => {
@@ -77,6 +95,7 @@ describe(`Running ${process.env.npm_config_adapter} Test`, () => {
 
     apy.forEach((pool) => {
       test(`Expects pool with id ${pool.pool} to have at least one number apy field`, () => {
+        if (isRoutingOnlyPool(pool)) return;
         expect(
           apyFields.map((field) => Number.isFinite(pool[field]))
         ).toContain(true);
@@ -87,6 +106,7 @@ describe(`Running ${process.env.npm_config_adapter} Test`, () => {
   describe('Check tvl data type', () => {
     apy.forEach((pool) => {
       test(`tvlUsd field of pool with id ${pool.pool} should be number `, () => {
+        if (isRoutingOnlyPool(pool)) return;
         expect(Number.isFinite(pool.tvlUsd)).toBe(true);
       });
     });
@@ -100,13 +120,33 @@ describe(`Running ${process.env.npm_config_adapter} Test`, () => {
         if (pool[field]) {
           test(`${field} field of pool with id ${pool.pool} should be an Array of strings`, () => {
             expect(Array.isArray(pool[field])).toBe(true);
-            const isStringArray =
-              pool[field].map((v) => typeof v).filter((v) => v === 'string')
-                .length === pool[field].length;
-            expect(isStringArray).toBe(true);
+            const nonStringValues = pool[field].filter(
+              (v) => typeof v !== 'string'
+            );
+            expect(nonStringValues).toEqual([]);
           });
         }
       });
+    });
+  });
+
+  describe('Check token data type', () => {
+    apy.forEach((pool) => {
+      if (pool.token) {
+        test(`token field of pool with id ${pool.pool} should be a string`, () => {
+          expect(typeof pool.token).toBe('string');
+        });
+      }
+    });
+  });
+
+  describe('Check searchTokenOverride data type', () => {
+    apy.forEach((pool) => {
+      if (pool.searchTokenOverride) {
+        test(`searchTokenOverride field of pool with id ${pool.pool} should be a string`, () => {
+          expect(typeof pool.searchTokenOverride).toBe('string');
+        });
+      }
     });
   });
 
@@ -135,22 +175,32 @@ describe(`Running ${process.env.npm_config_adapter} Test`, () => {
       uniquePoolIdentifiersDB.has(p)
     );
 
-    test('Print duplicated pool IDs and their existing projects', () => {
-      if (duplicatedPoolIds.length > 0) {
-        console.log('\nDuplicated pool IDs found:');
-        duplicatedPoolIds.forEach((poolId) => {
-          console.log(`Pool ID: ${poolId} is already used by another project`);
+    if (duplicatedPoolIds.length > 0) {
+      duplicatedPoolIds.forEach((poolId) => {
+        const existingProject = uniquePoolIdentifiersDB.get(poolId);
+        test(`Pool ${poolId} should not already be used (owned by "${existingProject}")`, () => {
+          expect(existingProject).toBeUndefined();
         });
-      }
-      expect(duplicatedPoolIds.length).toBe(0);
-    });
+      });
+    } else {
+      test('No pool IDs are duplicated across projects', () => {
+        expect(duplicatedPoolIds.length).toBe(0);
+      });
+    }
   });
 
-  test('Check project field is constant in all pools and if folder name and project field in pool objects matches the information in /protocols slug', () => {
-    expect(new Set(apy.map((p) => p.project)).size).toBe(1);
-    expect(
-      protocolsSlug.includes(apy[0].project) && apy[0].project === adapter
-    ).toBe(true);
+  test('All pools should have the same project field matching the adapter name and a known protocol slug', () => {
+    const projectNames = [...new Set(apy.map((p) => p.project))];
+    expect(projectNames).toEqual([adapter]);
+    expect(protocols).toContain(apy[0].project);
+  });
+
+  test('Adapter exports the protocolId matching its protocol slug', () => {
+    const protocol = protocolsBySlug.get(adapter);
+
+    expect(protocol).toBeDefined();
+    expect(typeof protocolId).toBe('string');
+    expect(protocolId).toBe(String(protocol.id));
   });
 
   describe('Check additional field data rules', () => {
@@ -163,18 +213,53 @@ describe(`Running ${process.env.npm_config_adapter} Test`, () => {
       totalBorrowUsd: {
         type: 'number',
       },
+      availableBorrowUsd: {
+        type: 'number',
+        min: 0,
+      },
       ltv: {
         min: 0,
         max: 1,
       },
+      pricePerShare: {
+        type: 'number',
+        min: 0,
+      },
+      isIntrinsicSource: {
+        type: 'boolean',
+      },
+      borrowToken: {
+        type: 'string',
+      },
+      routeGroupKey: {
+        type: 'string',
+      },
+      underlyingStateKey: {
+        type: 'string',
+      },
+      poolKind: {
+        type: 'string',
+        values: ['routing_collateral', 'routing_reserve'],
+      },
     };
 
     apy.forEach((pool) => {
+      if (pool.mintedCoin != null) {
+        test(`Pool ${pool.pool} with mintedCoin should include a borrowToken`, () => {
+          expect(pool.borrowToken).toBeDefined();
+          expect(pool.borrowToken).not.toBeNull();
+        });
+      }
       Object.entries(additionalFieldRules).map(([field, rule]) => {
         if (pool[field] !== undefined) {
           if (rule.type !== undefined) {
             test(`${field} field of pool with id ${pool.pool} should be a ${rule.type}`, () => {
               expect(typeof pool[field]).toBe(rule.type);
+            });
+          }
+          if (rule.values !== undefined) {
+            test(`${field} field of pool with id ${pool.pool} should be one of ${rule.values.join(', ')}`, () => {
+              expect(rule.values).toContain(pool[field]);
             });
           }
           if (rule.max !== undefined && rule.min !== undefined) {

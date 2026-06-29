@@ -1,4 +1,4 @@
-const superagent = require('superagent');
+const axios = require('axios');
 const { request, gql } = require('graphql-request');
 const sdk = require('@defillama/sdk');
 
@@ -13,13 +13,9 @@ const chainUrlParam = {
 };
 
 const getPrices = async (addresses) => {
-  const prices = (
-    await superagent.get(
-      `https://coins.llama.fi/prices/current/${addresses
+  const prices = (await utils.getPriceApiData(`/prices/current/${addresses
         .join(',')
-        .toLowerCase()}`
-    )
-  ).body.coins;
+        .toLowerCase()}`)).coins;
 
   const pricesBySymbol = Object.entries(prices).reduce(
     (acc, [name, price]) => ({
@@ -212,6 +208,7 @@ const apy = async () => {
 };
 
 module.exports = {
+  protocolId: '3353',
   timetravel: false,
   apy: apy,
 };

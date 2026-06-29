@@ -2,7 +2,8 @@ const { ethers } = require('ethers');
 const sdk = require('@defillama/sdk');
 const abi = require('./abi');
 const BigNumber = require('bignumber.js');
-const superagent = require('superagent');
+const axios = require('axios');
+const { getPriceApiUrl } = require('../utils');
 
 const BB_SNECT = '0x1d22592F66Fc92e0a64eE9300eAeca548cd466c5';
 const NECT = '0x1ce0a25d13ce4d52071ae7e02cf1f6606f4c79d3';
@@ -31,19 +32,19 @@ const apy = async () => {
 
 async function getPrices(addresses) {
   const coins = getCoinsURI(addresses);
-  const url = `https://coins.llama.fi/prices/current/${coins}`;
+  const url = getPriceApiUrl(`/prices/current/${coins}`);
   return await fetchPrices(url);
 }
 
 async function getPricesDaysBefore(addresses, days) {
   const coins = getCoinsURI(addresses);
   const timestamp = getTimestampDaysBefore(days);
-  const url = `https://coins.llama.fi/prices/historical/${timestamp}/${coins}`;
+  const url = getPriceApiUrl(`/prices/historical/${timestamp}/${coins}`);
   return await fetchPrices(url);
 }
 
 async function fetchPrices(url) {
-  const prices = (await superagent.get(url)).body.coins;
+  const prices = (await axios.get(url)).data.coins;
   const pricesByAddresses = Object.entries(prices).reduce(
     (acc, [address, price]) => ({
       ...acc,
@@ -68,10 +69,10 @@ function getTimestampDaysBefore(days) {
 }
 
 async function getBlockNumber(timestamp) {
-  const response = await superagent.get(
-    `https://coins.llama.fi/block/berachain/${timestamp}`
+  const response = await axios.get(
+    getPriceApiUrl(`/block/berachain/${timestamp}`)
   );
-  return response.body.height;
+  return response.data.height;
 }
 
 async function calcErc4626PoolApy(vault, prices) {
@@ -96,6 +97,7 @@ async function calcErc4626PoolApy(vault, prices) {
     apyBase,
     apyBase7d,
     apyReward: 0,
+    ...(sharePriceNow.isFinite() && sharePriceNow.gt(0) && { pricePerShare: sharePriceNow.toNumber() }),
     poolMeta: vaultMeta[vault].name,
     url: 'https://app.beraborrow.com/vault',
   };
@@ -159,6 +161,7 @@ const totalSupply = async (token, block = 'latest') => {
 };
 
 module.exports = {
+  protocolId: '5746',
   timetravel: true,
   apy,
   url: 'https://beraborrow.com',

@@ -1,7 +1,6 @@
 const sdk = require('@defillama/sdk');
 const axios = require('axios');
 const abiLendingPool = require('./abiLendingPool');
-const superagent = require('superagent');
 const abiProtocolDataProvider = require('./abiProtocolDataProvider');
 
 const utils = require('../utils');
@@ -105,9 +104,7 @@ const getApy = async () => {
             const rewardAPYs = (await utils.getData(rewardsDataURL));
 
             const pricesArray = reservesList.map((t) => `${'telos'}:${t}`);
-            const prices = (
-                await axios.get(`https://coins.llama.fi/prices/current/${pricesArray}`)
-            ).data.coins;
+            const prices = (await utils.getPriceApiData(`/prices/current/${pricesArray}`)).coins;
 
 
             return reservesList.map((t, i) => {
@@ -167,5 +164,6 @@ const getApy = async () => {
 };
 
 module.exports = {
+  protocolId: '2191',
     apy: getApy,
 };

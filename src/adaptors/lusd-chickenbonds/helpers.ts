@@ -1,8 +1,9 @@
 const sdk = require('@defillama/sdk');
-const superagent = require('superagent');
+const axios = require('axios');
 const { lambertW0 } = require('lambert-w-function');
 
 const abi = require('./abi');
+const { getPriceApiData } = require('../utils');
 const {
   LUSD_ADDRESS,
   BLUSD_ADDRESS,
@@ -13,11 +14,7 @@ const {
 } = require('./addresses');
 
 const getLusdUsdPrice = async () => {
-  return (
-    await superagent.get(
-      `https://coins.llama.fi/prices/current/ethereum:${LUSD_ADDRESS}`
-    )
-  ).body.coins[`ethereum:${LUSD_ADDRESS}`].price;
+  return (await getPriceApiData(`/prices/current/ethereum:${LUSD_ADDRESS}`)).coins[`ethereum:${LUSD_ADDRESS}`].price;
 };
 
 const contractCall = async (address, functionAbi, params = undefined) => {

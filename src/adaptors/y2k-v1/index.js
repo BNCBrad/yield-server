@@ -1,6 +1,4 @@
-const axios = require('axios');
 const ethers = require('ethers');
-const superagent = require('superagent');
 const sdk = require('@defillama/sdk');
 const utils = require('../utils');
 const { ContractABIs } = require('./abi');
@@ -246,6 +244,7 @@ const getApy = async () => {
 };
 
 module.exports = {
+  protocolId: '2375',
   timetravel: false,
   apy: getApy,
 };

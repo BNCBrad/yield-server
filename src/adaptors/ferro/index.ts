@@ -99,15 +99,7 @@ const getApy = async () => {
   const priceKeys = Object.keys(CG_NAMES)
     .map((t) => `coingecko:${t}`)
     .join(',');
-  const { coins: prices } = await utils.getData(
-    `https://coins.llama.fi/prices/current/${priceKeys}`
-  );
-  const stakingRatio = await request<StakingRatio>(FERR_SUBGRAPH, stakingQuery);
-  const stakingApy =
-    (1 -
-      stakingRatio.barDailySnapshots[6].ratio /
-        stakingRatio.barDailySnapshots[0].ratio) *
-    52;
+  const { coins: prices } = await utils.getPriceApiData(`/prices/current/${priceKeys}`);
 
   const mappedPrices = Object.entries(prices).reduce(
     (acc, [name, price]: any) => ({
@@ -117,25 +109,37 @@ const getApy = async () => {
     {} as Record<string, number>
   );
 
-  const ferroStakeBalance =
-    (
-      await sdk.api.erc20.balanceOf({
-        target: FERRO_TOKEN,
-        owner: STAKING_ADDRESS,
-        chain: 'cronos',
-      })
-    ).output / 1e18;
+  let stakePool = null;
+  try {
+    const stakingRatio: StakingRatio = await request(FERR_SUBGRAPH, stakingQuery);
+    const stakingApy =
+      (1 -
+        stakingRatio.barDailySnapshots[6].ratio /
+          stakingRatio.barDailySnapshots[0].ratio) *
+      52;
 
-  const stakePool = {
-    pool: STAKING_ADDRESS,
-    symbol: 'FER',
-    chain: utils.formatChain('cronos'),
-    project: 'ferro',
-    tvlUsd: ferroStakeBalance * mappedPrices.FERRO,
-    apyReward: stakingApy * 100,
-    underlyingTokens: [FERRO_TOKEN],
-    rewardTokens: [FERRO_TOKEN],
-  };
+    const ferroStakeBalance =
+      (
+        await sdk.api.erc20.balanceOf({
+          target: FERRO_TOKEN,
+          owner: STAKING_ADDRESS,
+          chain: 'cronos',
+        })
+      ).output / 1e18;
+
+    stakePool = {
+      pool: STAKING_ADDRESS,
+      symbol: 'FER',
+      chain: utils.formatChain('cronos'),
+      project: 'ferro',
+      tvlUsd: ferroStakeBalance * mappedPrices.FERRO,
+      apyReward: stakingApy * 100,
+      underlyingTokens: [FERRO_TOKEN],
+      rewardTokens: [FERRO_TOKEN],
+    };
+  } catch (e) {
+    console.log('ferro staking pool unavailable, skipping');
+  }
 
   const stable3FerPool = await getPoolApy(
     SWAP_3FER_ADDRESS,
@@ -155,10 +159,11 @@ const getApy = async () => {
     data
   );
 
-  return [stakePool, stable3FerPool, stable2FerPool];
+  return [stakePool, stable3FerPool, stable2FerPool].filter(Boolean);
 };
 
 module.exports = {
+  protocolId: '1882',
   timetravel: false,
   apy: getApy,
   url: 'https://ferroprotocol.com/#/pools',

@@ -36,10 +36,12 @@ const getApy = async () => {
     // rewardTokens: [USDB],
     poolMeta: `Dynamic Market Maker`,
     url: `https://bfx.trade/vaults/platformOverview?vault_wallet=0x2688c2bb0eeea0cd10de520699090a36469d788a`,
+    underlyingTokens: [USDB],
   }));
 };
 
 module.exports = {
+  protocolId: '4221',
   timetravel: false,
   apy: getApy,
   url: 'https://bfx.trade/vaults',

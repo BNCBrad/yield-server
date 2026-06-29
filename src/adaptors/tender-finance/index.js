@@ -1,4 +1,4 @@
-const superagent = require('superagent');
+const axios = require('axios');
 const sdk = require('@defillama/sdk');
 const gmdAbi = require('./abis/gmd.json');
 const { comptrollerAbi, ercDelegator } = require('./abis/tender');
@@ -95,9 +95,7 @@ async function getGlpApy() {
     gmxAbi['tokensPerInterval']
   );
   const priceKeys = ['gmx', 'ethereum'].map((t) => `coingecko:${t}`).join(',');
-  const { coins: priceData } = await utils.getData(
-    `https://coins.llama.fi/prices/current/${priceKeys}`
-  );
+  const { coins: priceData } = await utils.getPriceApiData(`/prices/current/${priceKeys}`);
   return await glpApyBase(
     'arbitrum',
     await getGlpTvl('arbitrum'),
@@ -159,13 +157,9 @@ const getGmdInfo = async () => {
   ).output.map(({ output }) => [output.GDlptoken, output]);
 };
 const getPrices = async (addresses) => {
-  const prices = (
-    await superagent.get(
-      `https://coins.llama.fi/prices/current/${addresses
+  const prices = (await utils.getPriceApiData(`/prices/current/${addresses
         .join(',')
-        .toLowerCase()}`
-    )
-  ).body.coins;
+        .toLowerCase()}`)).coins;
 
   const pricesByAddress = Object.entries(prices).reduce(
     (acc, [name, price]) => ({
@@ -234,6 +228,8 @@ const main = async () => {
   const extraRewards = await getRewards(allMarkets, REWARD_SPEED);
   const extraRewardsBorrow = await getRewards(allMarkets, REWARD_SPEED_BORROW);
   const isPaused = await getRewards(allMarkets, 'mintGuardianPaused');
+  const borrowCaps = await getRewards(allMarkets, 'borrowCaps');
+  const isBorrowPaused = await getRewards(allMarkets, 'borrowGuardianPaused');
 
   const supplyRewards = await multiCallMarkets(
     allMarkets,
@@ -319,6 +315,15 @@ const main = async () => {
     const tvlUsd = (marketsCash[i] / 10 ** decimals) * price;
 
     const totalBorrowUsd = (Number(totalBorrows[i]) / 10 ** decimals) * price;
+    const availableBorrowUsd =
+      (Math.min(
+        Number(marketsCash[i]),
+        Number(borrowCaps[i]) > 0
+          ? Math.max(Number(borrowCaps[i]) - Number(totalBorrows[i]), 0)
+          : Number(marketsCash[i])
+      ) /
+        10 ** decimals) *
+      price;
 
     const apyBase = handleApyUnderlying(market, symbol, supplyRewards[i]);
     const apyBaseBorrow = calculateApy(borrowRewards[i] / 10 ** 18);
@@ -350,9 +355,12 @@ const main = async () => {
         Boolean
       ),
       totalSupplyUsd,
-      ltv: Number(markets[i].collateralFactorMantissa) / 1e18,
       totalBorrowUsd,
+      availableBorrowUsd,
+      borrowable: isBorrowPaused[i] === false,
+      ltv: Number(markets[i].collateralFactorMantissa) / 1e18,
       apyBaseBorrow,
+      borrowToken: token,
       apyRewardBorrow,
     };
     return poolReturned;
@@ -361,6 +369,7 @@ const main = async () => {
 };
 
 module.exports = {
+  protocolId: '2382',
   timetravel: false,
   apy: main,
   url: 'https://app.tender.fi',

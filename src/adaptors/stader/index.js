@@ -3,11 +3,12 @@ const axios = require('axios');
 const abi = require('./abi.js');
 const PermissionlessNodeRegistryAbi = require('./ PermissionlessNodeRegistryAbi.json');
 const abiPolygon = require('./abiPolygon');
+const { getPriceApiData } = require('../utils');
 
 const token = '0xa35b1b31ce002fbf2058d22f30f95d405200a15b';
 const stakingContract = '0xcf5EA1b38380f6aF39068375516Daf40Ed70D299';
 const nodeOperatorRegistry = '0x4f4bfa0861f62309934a5551e0b2541ee82fdcf1';
-const weth = '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2';
+const WMATIC = '0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270';
 
 const getApy = async () => {
   let tvl = (await sdk.api.erc20.totalSupply({ target: token })).output / 1e18;
@@ -26,9 +27,7 @@ const getApy = async () => {
 
   const now = Math.floor(Date.now() / 1000);
   const timestamp7dayAgo = now - 86400 * 7;
-  const block7dayAgo = (
-    await axios.get(`https://coins.llama.fi/block/ethereum/${timestamp7dayAgo}`)
-  ).data.height;
+  const block7dayAgo = (await getPriceApiData(`/block/ethereum/${timestamp7dayAgo}`)).height;
 
   const exchangeRates = await Promise.all([
     sdk.api.abi.call({
@@ -49,10 +48,8 @@ const getApy = async () => {
     365 *
     100;
 
-  const priceKey = `ethereum:${weth}`;
-  const ethPrice = (
-    await axios.get(`https://coins.llama.fi/prices/current/${priceKey}`)
-  ).data.coins[priceKey]?.price;
+  const priceKey = 'ethereum:0x0000000000000000000000000000000000000000';
+  const ethPrice = (await getPriceApiData(`/prices/current/${priceKey}`)).coins[priceKey]?.price;
 
   // maticx contract on ethereum
   const stakeManagerContract = '0xf03A7Eb46d01d9EcAA104558C732Cf82f6B6B645';
@@ -80,9 +77,7 @@ const getApy = async () => {
     100;
 
   const priceKeyPolygon = `ethereum:${stakeManagerContract}`;
-  const maticxPrice = (
-    await axios.get(`https://coins.llama.fi/prices/current/${priceKeyPolygon}`)
-  ).data.coins[priceKeyPolygon]?.price;
+  const maticxPrice = (await getPriceApiData(`/prices/current/${priceKeyPolygon}`)).coins[priceKeyPolygon]?.price;
 
   const tvlPolygon =
     (
@@ -102,7 +97,10 @@ const getApy = async () => {
       tvlUsd: tvl * ethPrice,
       apyBase: apyBase7d,
       apyBase7d,
-      underlyingTokens: [weth],
+      ...(Number(exchangeRates[0].output) / 1e18 > 0 && { pricePerShare: Number(exchangeRates[0].output) / 1e18 }),
+      underlyingTokens: ['0x0000000000000000000000000000000000000000'],
+      searchTokenOverride: token,
+      isIntrinsicSource: true,
     },
     {
       pool: stakeManagerContract,
@@ -112,12 +110,16 @@ const getApy = async () => {
       tvlUsd: tvlPolygon * maticxPrice,
       apyBase: apyBase7dPolygon,
       apyBase7d: apyBase7dPolygon,
-      underlyingTokens: ['0x0000000000000000000000000000000000001010'],
+      ...(Number(exchangeRatesPolygon[0].output[0]) / 1e18 > 0 && { pricePerShare: Number(exchangeRatesPolygon[0].output[0]) / 1e18 }),
+      underlyingTokens: ['coingecko:polygon-ecosystem-token'],
+      searchTokenOverride: stakeManagerContract,
+      isIntrinsicSource: true,
     },
   ];
 };
 
 module.exports = {
+  protocolId: '1044',
   timetravel: false,
   apy: getApy,
   url: 'https://www.staderlabs.com/eth/stake/',

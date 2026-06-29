@@ -3,6 +3,7 @@ const { contractAddresses } = require('./addresses');
 const { fetchBaseAssetPrices } = require('./fetchBaseAssetPrices');
 const { fetchTokenData } = require('./fetchTokenData');
 const { formatUnits } = require('ethers/lib/utils');
+const utils = require('../utils');
 
 const poolsFunction = async () => {
   try {
@@ -27,12 +28,13 @@ const poolsFunction = async () => {
 
         const result = {
           pool: `${tokenConfig.address.toLowerCase()}-${chain.toLowerCase()}`,
-          chain,
+          chain: utils.formatChain(chain),
           project: 'midas-rwa',
           symbol: token,
           tvlUsd,
           apyBase: apy,
           url: tokenConfig.url,
+          underlyingTokens: [tokenConfig.address],
         };
 
         results.push(result);
@@ -47,6 +49,7 @@ const poolsFunction = async () => {
 };
 
 module.exports = {
+  protocolId: '4873',
   timetravel: false,
   apy: poolsFunction,
   url: 'https://midas.app/',

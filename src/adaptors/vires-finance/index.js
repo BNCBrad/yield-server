@@ -44,6 +44,7 @@ const getApy = async () => {
       totalBorrowUsd: Number(item.totalDebtUsd),
       apyBaseBorrow: Number(item.borrowApr) * 100,
       apyRewardBorrow: Number(item.borrowViresApr) * 100,
+      underlyingTokens: configStateIDMapping[item.address] ? [configStateIDMapping[item.address]] : undefined,
       ltv: assets[configStateIDMapping[item.address]]?.collateralFactor / 1000,
     };
   });
@@ -51,6 +52,7 @@ const getApy = async () => {
 };
 
 module.exports = {
+  protocolId: '612',
   timetravel: false,
   apy: getApy,
   url: 'https://vires.finance/',

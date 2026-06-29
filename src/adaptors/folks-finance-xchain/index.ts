@@ -24,15 +24,20 @@ async function initPools() {
   // Get TVL for each spoke token in each chain
   const chainsPoolsTvl = await Promise.all(
     Object.keys(HubPools).map(async (chain) => {
-      const chainApi = new sdk.ChainApi({
-        chain: chain,
-        timestamp: Math.floor(Date.now() / 1000),
-      });
-      const tokensAndOwners = HubPools[chain].pools.map((pool) => [
-        pool.tokenAddress,
-        pool.spokeAddress ?? pool.poolAddress,
-      ]);
-      return await chainApi.sumTokens({ tokensAndOwners });
+      try {
+        const chainApi = new sdk.ChainApi({
+          chain: chain,
+          timestamp: Math.floor(Date.now() / 1000),
+        });
+        const tokensAndOwners = HubPools[chain].pools.map((pool) => [
+          pool.tokenAddress,
+          pool.spokeAddress ?? pool.poolAddress,
+        ]);
+        return await chainApi.sumTokens({ tokensAndOwners });
+      } catch (error) {
+        console.error(`Failed to fetch TVL for ${chain}:`, error.message);
+        return {}; // Return empty object for failed chains
+      }
     })
   );
 
@@ -60,6 +65,7 @@ async function initPools() {
         symbol: pool.underlyingSymbol,
         tvlUsd: toUsdValue(poolTvl, price, decimals),
         underlyingTokens: [pool.tokenAddress],
+        borrowToken: pool.tokenAddress,
         rewardTokens: [],
         apyReward: 0,
         meta: {
@@ -86,7 +92,14 @@ const updateWithLendingData = async (poolsInfo) => {
     poolsInfo.map((item) => item.meta.pool),
     poolsInfo.map((item) => item.meta.poolId),
   ];
-  const [depositData, variableBorrowData, stableBorrowData, loanPools] =
+  const [
+    depositData,
+    variableBorrowData,
+    stableBorrowData,
+    poolCapsData,
+    poolConfigData,
+    loanPools,
+  ] =
     await Promise.all([
       await chainApi.multiCall({
         calls: targets,
@@ -99,6 +112,14 @@ const updateWithLendingData = async (poolsInfo) => {
       await chainApi.multiCall({
         calls: targets,
         abi: HubPoolAbi.getStableBorrowData,
+      }),
+      await chainApi.multiCall({
+        calls: targets,
+        abi: HubPoolAbi.getCapsData,
+      }),
+      await chainApi.multiCall({
+        calls: targets,
+        abi: HubPoolAbi.getConfigData,
       }),
       await chainApi.multiCall({
         calls: poolIds.map((poolId) => ({
@@ -129,6 +150,9 @@ const updateWithLendingData = async (poolsInfo) => {
   poolsInfo.forEach((poolInfo, i) => {
     const { price, decimals } = poolInfo.meta;
     const totalDebt = varBorrTotalAmount[i] + stblBorrTotalAmount[i];
+    const loanPool = loanPools[i];
+    const poolBorrowCapUsd = Number(poolCapsData[i].borrow);
+    const loanBorrowCapUsd = Number(loanPool.borrowCap);
 
     // Calculate overall borrow rate
     const borrowRate = overallBorrowInterestRate(
@@ -156,8 +180,29 @@ const updateWithLendingData = async (poolsInfo) => {
     );
     poolInfo.totalBorrowUsd = toUsdValue(totalDebt, price, decimals);
     poolInfo.ltv = ltvs[i];
+    poolInfo.borrowable =
+      loanPool.isAdded &&
+      !loanPool.isDeprecated &&
+      !poolConfigData[i].deprecated &&
+      Number(loanPool.borrowFactor) > 0 &&
+      poolBorrowCapUsd > 0 &&
+      loanBorrowCapUsd > 0;
+    poolInfo.availableBorrowUsd = Math.max(
+      Math.min(
+        poolInfo.totalSupplyUsd - poolInfo.totalBorrowUsd,
+        poolBorrowCapUsd - poolInfo.totalBorrowUsd,
+        loanBorrowCapUsd -
+          toUsdValue(BigInt(loanPool.borrowUsed), price, decimals)
+      ),
+      0
+    );
   });
-  return poolsInfo;
+  return poolsInfo.filter(
+    (_, i) =>
+      loanPools[i].isAdded &&
+      !loanPools[i].isDeprecated &&
+      !poolConfigData[i].deprecated
+  );
 };
 
 const updateWithRewardsV2Data = async (poolsInfo) => {
@@ -202,10 +247,12 @@ const updateWithRewardsV2Data = async (poolsInfo) => {
   const rewardsTokenPriceIds = poolRewardsInfo
     .filter(Boolean)
     .map((poolRewardInfo) =>
-      poolRewardInfo.remainingRewards.map(
-        ([rewardTokenId]) =>
-          `${RewardsTokenV2[rewardTokenId].chain}:${RewardsTokenV2[rewardTokenId].tokenAddress}`
-      )
+      poolRewardInfo.remainingRewards
+        .filter(([rewardTokenId]) => RewardsTokenV2[rewardTokenId]) // Skip unknown reward tokens
+        .map(
+          ([rewardTokenId]) =>
+            `${RewardsTokenV2[rewardTokenId].chain}:${RewardsTokenV2[rewardTokenId].tokenAddress}`
+        )
     )
     .flat();
 
@@ -216,6 +263,9 @@ const updateWithRewardsV2Data = async (poolsInfo) => {
     const { remainingRewards, remainingTime } = poolRewardsInfo[i];
     remainingRewards.forEach(([rewardTokenId, remainingRewardsAmount]) => {
       const rewardTokenInfo = RewardsTokenV2[rewardTokenId];
+      // Skip unknown reward tokens
+      if (!rewardTokenInfo) return;
+
       const rewardTokenPrice =
         tokenPrices[
           `${
@@ -252,6 +302,7 @@ const calcYields = async () => {
 };
 
 module.exports = {
+  protocolId: '5199',
   timetravel: true,
   apy: calcYields,
   url: 'https://xapp.folks.finance/',

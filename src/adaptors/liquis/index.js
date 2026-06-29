@@ -1,6 +1,6 @@
 const sdk = require('@defillama/sdk');
 const utils = require('../utils');
-const superagent = require('superagent');
+const axios = require('axios');
 const { request, gql } = require('graphql-request');
 
 const hub = '0xb5087f95643a9a4069471a28d32c569d9bd57fe4';
@@ -132,9 +132,7 @@ const liqLitPool = async (chain, olitprice, liqprice) => {
   const keys = [weth, bal, lit[chain]]
     .map((token) => `${chain}:${token}`)
     .join(',');
-  const prices = (
-    await superagent.get(`https://coins.llama.fi/prices/current/${keys}`)
-  ).body.coins;
+  const prices = (await utils.getPriceApiData(`/prices/current/${keys}`)).coins;
   const balPrice = prices[`${chain}:${bal}`]?.price;
   const wethPrice = prices[`${chain}:${weth}`]?.price;
 
@@ -462,9 +460,7 @@ const topLvl = async (chainString, url, timestamp) => {
 
     // fetch token prices
     const keys = tokens.map((token) => `${chainString}:${token}`).join(',');
-    const prices = (
-      await superagent.get(`https://coins.llama.fi/prices/current/${keys}`)
-    ).body.coins;
+    const prices = (await utils.getPriceApiData(`/prices/current/${keys}`)).coins;
 
     // calculate the price of oLIT
     let optionPrice = 0;
@@ -690,6 +686,7 @@ const main = async (timestamp = null) => {
 };
 
 module.exports = {
+  protocolId: '3498',
   timetravel: false,
   apy: main,
   url: `https://www.liquis.app/stake`,

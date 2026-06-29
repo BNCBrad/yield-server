@@ -7,9 +7,7 @@ async function tvlUsd() {
   const contractTVLInWAVES = await data(wavesStakingContract, 'STAKING_AMOUNT');
 
   const priceKeys = ['waves', 'usd'].map((t) => `coingecko:${t}`).join(',');
-  const { coins: prices } = await utils.getData(
-    `https://coins.llama.fi/prices/current/${priceKeys}`
-  );
+  const { coins: prices } = await utils.getPriceApiData(`/prices/current/${priceKeys}`);
 
   const wavesPrice = prices['coingecko:waves'].price;
   return (contractTVLInWAVES.value / 1e8) * wavesPrice;
@@ -31,16 +29,18 @@ async function apy() {
   return [
     {
       pool: wavesStakingContract,
-      symbol: utils.formatSymbol('sWAVES'),
+      symbol: 'sWAVES',
       tvlUsd: await tvlUsd(),
       apyBase: await apyBase(),
       project: 'pepeteam-swaves',
       chain: utils.formatChain('waves'),
+      underlyingTokens: ['WAVES'],
     },
   ];
 }
 
 module.exports = {
+  protocolId: '2351',
   timetravel: false, // Waves blockchain
   apy,
   url: 'https://swaves.pepe.team',

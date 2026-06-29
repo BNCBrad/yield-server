@@ -1,7 +1,8 @@
 const ethers = require('ethers');
 const abi = require('./abi');
 const sdk = require('@defillama/sdk');
-const superagent = require('superagent');
+const axios = require('axios');
+const { getPriceApiData } = require('../utils');
 
 /////////////////////////// Constants ///////////////////////////
 
@@ -60,9 +61,7 @@ function binomialApproximatedRayPow(base, exp) {
 
 const getPrices = async (address) => {
   const token = `ethereum:${address.toLowerCase()}`;
-  const prices = (
-    await superagent.get(`https://coins.llama.fi/prices/current/${token}`)
-  ).body.coins[token];
+  const prices = (await getPriceApiData(`/prices/current/${token}`)).coins[token];
 
   return {
     price: prices.price,
@@ -72,7 +71,7 @@ const getPrices = async (address) => {
 };
 
 const getDefiLLamaPools = async (project, chain) => {
-  const pools = (await superagent.get('https://yields.llama.fi/pools')).body
+  const pools = (await axios.get('https://yields.llama.fi/pools')).data
     .data;
   return pools.filter(
     (pool) =>
@@ -357,6 +356,7 @@ const getApy = async () => {
       totalBorrowUsd,
       tvlUsd: totalSupplyUsd,
       mintedCoin: 'GHO',
+      borrowToken: GHO,
       debtCeilingUsd,
     };
     pools.push(pool);
@@ -377,6 +377,7 @@ const getApy = async () => {
 };
 
 module.exports = {
+  protocolId: '3352',
   timetravel: false,
   apy: getApy,
   url: 'https://dullahan.paladin.vote/',

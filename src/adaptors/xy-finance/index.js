@@ -1,6 +1,6 @@
 const axios = require('axios');
 const ethers = require('ethers');
-const superagent = require('superagent');
+const { getPriceApiUrl } = require('../utils');
 const {
   chainSupported,
   ethereumRefUnderlyingTokenAddress,
@@ -35,10 +35,10 @@ const main = async () => {
   for (const [symbol, vaultInfo] of Object.entries(resp.eachYpoolVault)) {
     const refAddr = ethereumRefUnderlyingTokenAddress(symbol);
     const key = `ethereum:${refAddr}`;
-    const priceRes = await superagent.get(
-      `https://coins.llama.fi/prices/current/${key}`
+    const priceRes = await axios.get(
+      getPriceApiUrl(`/prices/current/${key}`)
     );
-    const tokenPrice = priceRes.body.coins[key].price;
+    const tokenPrice = priceRes.data.coins[key].price;
     for (const chainId of vaultInfo.supportedChains) {
       if (!chainSupported(chainId)) {
         continue;
@@ -85,6 +85,7 @@ const main = async () => {
 };
 
 module.exports = {
+  protocolId: '1885',
   timetravel: false,
   apy: main,
   url: 'https://app.xy.finance/pools',

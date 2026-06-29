@@ -37,11 +37,13 @@ const main = async (timestamp = null) => {
       tvlUsd: vaultTvl,
       apyBase: apy * 100,
       url: 'https://www.avantisfi.com/earn/avantis-vault',
+      underlyingTokens: [ADDRESSES.base.USDC],
     },
   ];
 };
 
 module.exports = {
+  protocolId: '4108',
   timetravel: false,
   apy: main,
 };

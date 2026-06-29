@@ -3,7 +3,8 @@ const { ethers } = require('ethers');
 const wiseLendingABI = require('./abi/wiseLendingABI.json');
 const wiseSecurityABI = require('./abi/wiseSecurityABI.json');
 const AaveHubABI = require('./abi/AaveHubABI.json');
-const superagent = require('superagent');
+const axios = require('axios');
+const { getPriceApiData } = require('../utils');
 
 const ChainName = {
   ethereum: "Ethereum",
@@ -77,11 +78,7 @@ const getTokenData = async (chain, token, addresses, contract) => {
 
     const tokenAddress = `${chain}:${address[token]}`;
 
-    const usdPrice = (
-      await superagent.get(
-        `https://coins.llama.fi/prices/current/${tokenAddress}`
-      )
-    ).body.coins[tokenAddress];
+    const usdPrice = (await getPriceApiData(`/prices/current/${tokenAddress}`)).coins[tokenAddress];
 
     const lendingData = await sdk.api.abi.call({
       target: aaveHub,
@@ -146,6 +143,7 @@ const getTokenData = async (chain, token, addresses, contract) => {
       // apyRewardBorrow: borrowRate,
       totalSupplyUsd,
       totalBorrowUsd,
+      underlyingTokens: [underlyingAddress],
     };
   } catch (e) {
     console.log('error', chain, token, address[token], wiseSecurity, wiseLending, e);
@@ -182,6 +180,7 @@ async function apy() {
 }
 
 module.exports = {
+  protocolId: '4494',
   timetravel: false,
   apy: apy,
 };

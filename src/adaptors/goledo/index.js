@@ -1,7 +1,6 @@
 const utils = require('../utils');
 const sdk = require('@defillama/sdk');
 const { default: BigNumber } = require('bignumber.js');
-const superagent = require('superagent');
 const masterChefABI = require('./abis/masterchef.json');
 const lpABI = require('./abis/lp.json');
 
@@ -15,9 +14,7 @@ const getBaseTokensPrice = async () => {
     .map((t) => `coingecko:${t}`)
     .join(',');
 
-  const { coins: prices } = await utils.getData(
-    `https://coins.llama.fi/prices/current/${priceKeys}`
-  );
+  const { coins: prices } = await utils.getPriceApiData(`/prices/current/${priceKeys}`);
 
   const golPrice = prices['coingecko:goledo'].price;
   const cfxPrice = prices['coingecko:conflux-token'].price;
@@ -240,6 +237,7 @@ const getApy = async () => {
 };
 
 module.exports = {
+  protocolId: '2576',
   timetravel: false,
   apy: getApy,
   url: 'https://www.goledo.cash/',

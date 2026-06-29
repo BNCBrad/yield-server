@@ -152,10 +152,12 @@ const getData = async ({ chainId, address }) => {
     symbol: symbol.output.replace('i', ''),
     apyBase: Number(apr),
     tvlUsd: Number(tvl),
+    underlyingTokens: [address],
   };
 };
 
 module.exports = {
+  protocolId: '2839',
   apy: getAPY,
   url: STABLECOIN_URL,
 };

@@ -3,6 +3,7 @@ const axios = require('axios');
 const utils = require('../utils');
 
 const filHubPool = '0xfeB16A48dbBB0E637F68215b19B4DF5b12449676';
+const WFIL = '0x60E1773636CF5E4A227d9AC24F20fEca034ee25A';
 const sdkChain = 'filecoin';
 const url = 'https://www.nodedao.com/';
 const liquidStakingABI = require('./liquidStaking');
@@ -18,9 +19,7 @@ const getApyAbi = {
 const getApy = async () => {
   // <- Filecoin ->
   const filPriceKey = `coingecko:filecoin`;
-  const price = (
-    await axios.get(`https://coins.llama.fi/prices/current/${filPriceKey}`)
-  ).data.coins[filPriceKey]?.price;
+  const price = (await utils.getPriceApiData(`/prices/current/${filPriceKey}`)).coins[filPriceKey]?.price;
 
   const tokenAddress = '0x84B038DB0fCde4fae528108603C7376695dc217F'; // Replace with your token address
   const getFilAPY = await sdk.api2.abi.call({
@@ -74,11 +73,15 @@ const getApy = async () => {
     tvlUsd: filTvl, // number representing current USD TVL in pool
     apyBase: parseFloat(getFilAPY / 100), // APY from pool fees/supplying in %
     url,
+    underlyingTokens: ['coingecko:filecoin'],
+    searchTokenOverride: filHubPool,
+    isIntrinsicSource: true,
   };
 
   return [filecoinAPY];
 };
 
 module.exports = {
+  protocolId: '3202',
   apy: getApy,
 };

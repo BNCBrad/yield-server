@@ -1,4 +1,3 @@
-const superagent = require('superagent');
 const { default: BigNumber } = require('bignumber.js');
 
 const utils = require('../utils');
@@ -37,9 +36,7 @@ const getAssetPrice = async () => {
     LAY: 'astar:0xc4335b1b76fa6d52877b3046eca68f6e708a27dd',
     KGL: 'astar:0x257f1a047948f73158dadd03eb84b34498bcdc60',
   };
-  const { coins: prices } = await utils.getData(
-    `https://coins.llama.fi/prices/current/${Object.entries(assets)}`
-  );
+  const { coins: prices } = await utils.getPriceApiData(`/prices/current/${Object.entries(assets)}`);
 
   return {
     0: 1,
@@ -89,6 +86,7 @@ const getApy = async () => {
 };
 
 module.exports = {
+  protocolId: '1608',
   timetravel: false,
   apy: getApy,
 };

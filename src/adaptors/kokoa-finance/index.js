@@ -19,15 +19,17 @@ const poolsFunction = async () => {
     pool: `0x5e6215dfb33b1fb71e48000a47ed2ebb86d5bf3d`, //dKSD pool address
     chain: utils.formatChain('klaytn'),
     project: 'kokoa-finance',
-    symbol: utils.formatSymbol('KSD'), //Users deposit KSD and claims the realized APY upon withdrawal
+    symbol: 'KSD', //Users deposit KSD and claims the realized APY upon withdrawal
     tvlUsd: Number(dksdData.dKsdTotalSupply),
     apy: Number(dksdData.apy),
+    underlyingTokens: [KSD],
   };
 
   return [earnPool]; // Kokoa Finance Earn pool(the only pool) accrues APY yields via collateral management yields
 };
 const KSD_COIN_ID = 'kokoa-stable-dollar';
 const KOKOA = '0xb15183d0d4d5e86ba702ce9bb7b633376e7db29f';
+const KSD = '0x4fa62f1f404188ce860c8f0041d6ac3765a72e67'; // KSD stablecoin on Klaytn
 const cdpDataFunction = async () => {
   const URL = 'https://prod.kokoa-api.com/vaults/borrow';
   const data = (await utils.getData(URL)).vaults;
@@ -67,6 +69,7 @@ const cdpDataFunction = async () => {
         ltv: Number(pool.liqLtvPercent) / 100,
         mintedCoin: 'KSD',
         poolMeta: symbols[index] === 'KSLP' ? 'KlaySwap LP' : null,
+        underlyingTokens: symbols[index] !== 'KSLP' ? [pool.address] : undefined,
       };
     })
     .filter((e) => e.symbol);
@@ -79,6 +82,7 @@ const main = async () => {
 };
 
 module.exports = {
+  protocolId: '1720',
   timetravel: false,
   apy: main,
   url: 'https://app.kokoa.finance/earn',

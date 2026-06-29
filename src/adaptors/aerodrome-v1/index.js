@@ -14,7 +14,9 @@ const AERO = '0x940181a94A35A4569E4529A3CDfB74e38FD98631';
 
 const PROJECT = 'aerodrome-v1';
 const CHAIN = 'base';
-const SUBGRAPH = sdk.graph.modifyEndpoint('7uEwiKmfbRQqV8Ec9nvdKrMFVFQv5qaM271gdBvHtywj');
+const SUBGRAPH = sdk.graph.modifyEndpoint(
+  '7uEwiKmfbRQqV8Ec9nvdKrMFVFQv5qaM271gdBvHtywj'
+);
 
 const query = gql`
   {
@@ -46,42 +48,39 @@ const queryPrior = gql`
 `;
 
 async function getPoolVolumes(timestamp = null) {
-  const [block, blockPrior] = await utils.getBlocks(CHAIN, timestamp, [
-    SUBGRAPH,
+  const timestampForBlocks =
+    timestamp != null ? Number(timestamp) : Math.floor(Date.now() / 1000);
+  const [[block, blockPrior], [blockPrior7d]] = await Promise.all([
+    utils.getBlocks(CHAIN, timestamp, [SUBGRAPH]),
+    utils.getBlocksByTime([timestampForBlocks - 604800], CHAIN),
   ]);
 
-  const [_, blockPrior7d] = await utils.getBlocks(
-    CHAIN,
-    timestamp,
-    [SUBGRAPH],
-    604800
-  );
-
   // pull data
-  let dataNow = await request(SUBGRAPH, query.replace('<PLACEHOLDER>', block));
-  dataNow = dataNow.pairs;
-
-  // pull 24h offset data to calculate fees from swap volume
   let queryPriorC = queryPrior;
-  let dataPrior = await request(
-    SUBGRAPH,
-    queryPriorC.replace('<PLACEHOLDER>', blockPrior)
-  );
+  let [dataNow, dataPrior, dataPrior7d] = await Promise.all([
+    request(SUBGRAPH, query.replace('<PLACEHOLDER>', block)),
+    request(SUBGRAPH, queryPriorC.replace('<PLACEHOLDER>', blockPrior)),
+    request(SUBGRAPH, queryPriorC.replace('<PLACEHOLDER>', blockPrior7d)),
+  ]);
+  dataNow = dataNow.pairs;
   dataPrior = dataPrior.pairs;
-
-  // 7d offset
-  const dataPrior7d = (
-    await request(SUBGRAPH, queryPriorC.replace('<PLACEHOLDER>', blockPrior7d))
-  ).pairs;
+  dataPrior7d = dataPrior7d.pairs;
 
   // calculate tvl
   dataNow = await utils.tvl(dataNow, CHAIN);
   // calculate apy
   dataNow = dataNow.map((el) => utils.apy(el, dataPrior, dataPrior7d, 'v3'));
 
-  const pools = {}
-  for (const p of dataNow.filter(p => p.volumeUSD1d >= 0 && (!isNaN(p.apy1d) || !isNaN(p.apy7d)))) {
-    const url = 'https://aerodrome.finance/deposit?token0=' + p.token0.id + '&token1=' + p.token1.id + '&factory=0x420DD381b31aEf6683db6B902084cB0FFECe40Da';
+  const pools = {};
+  for (const p of dataNow.filter(
+    (p) => p.volumeUSD1d >= 0 && (!isNaN(p.apy1d) || !isNaN(p.apy7d))
+  )) {
+    const url =
+      'https://aerodrome.finance/deposit?token0=' +
+      p.token0.id +
+      '&token1=' +
+      p.token1.id +
+      '&factory=0x420DD381b31aEf6683db6B902084cB0FFECe40Da';
     const underlyingTokens = [p.token0.id, p.token1.id];
 
     const poolAddress = utils.formatAddress(p.id);
@@ -97,7 +96,7 @@ async function getPoolVolumes(timestamp = null) {
       url,
       volumeUsd1d: p.volumeUSD1d,
       volumeUsd7d: p.volumeUSD7d,
-    }
+    };
   }
 
   return pools;
@@ -123,28 +122,8 @@ const getGaugeApy = async () => {
     })
   ).output.map((o) => o.output);
 
-  const metaData = (
-    await sdk.api.abi.multiCall({
-      calls: allPools.map((i) => ({
-        target: i,
-      })),
-      abi: abiPool.find((m) => m.name === 'metadata'),
-      chain: CHAIN,
-    })
-  ).output.map((o) => o.output);
-
-  const symbols = (
-    await sdk.api.abi.multiCall({
-      calls: allPools.map((i) => ({
-        target: i,
-      })),
-      abi: abiPool.find((m) => m.name === 'symbol'),
-      chain: CHAIN,
-    })
-  ).output.map((o) => o.output);
-
-  const gauges = (
-    await sdk.api.abi.multiCall({
+  const gauges = await sdk.api.abi
+    .multiCall({
       calls: allPools.map((i) => ({
         target: voter,
         params: [i],
@@ -152,38 +131,68 @@ const getGaugeApy = async () => {
       abi: abiVoter.find((m) => m.name === 'gauges'),
       chain: CHAIN,
     })
-  ).output.map((o) => o.output);
+    .then((r) => r.output.map((o) => o.output));
 
-  const rewardRate = (
-    await sdk.api.abi.multiCall({
-      calls: gauges.map((i) => ({
-        target: i,
-      })),
-      abi: abiGauge.find((m) => m.name === 'rewardRate'),
-      chain: CHAIN,
-      permitFailure: true,
-    })
-  ).output.map((o) => o.output);
+  // remove pools without valid gauges
+  const validGauges = [];
+  const validPools = [];
 
-  const poolSupply = (
-    await sdk.api.abi.multiCall({
-      calls: allPools.map((i) => ({ target: i })),
-      chain: CHAIN,
-      abi: 'erc20:totalSupply',
-      permitFailure: true,
-    })
-  ).output.map((o) => o.output);
+  gauges.forEach((gauge, index) => {
+    if (gauge && gauge !== '0x0000000000000000000000000000000000000000') {
+      validGauges.push(gauge);
+      validPools.push(allPools[index]);
+    }
+  });
 
-  const totalSupply = (
-    await sdk.api.abi.multiCall({
-      calls: gauges.map((i) => ({
-        target: i,
-      })),
-      abi: abiGauge.find((m) => m.name === 'totalSupply'),
-      chain: CHAIN,
-      permitFailure: true,
-    })
-  ).output.map((o) => o.output);
+  const [metaData, symbols, rewardRate, poolSupply, totalSupply] =
+    await Promise.all([
+      sdk.api.abi
+        .multiCall({
+          calls: validPools.map((i) => ({
+            target: i,
+          })),
+          abi: abiPool.find((m) => m.name === 'metadata'),
+          chain: CHAIN,
+        })
+        .then((r) => r.output.map((o) => o.output)),
+      sdk.api.abi
+        .multiCall({
+          calls: validPools.map((i) => ({
+            target: i,
+          })),
+          abi: abiPool.find((m) => m.name === 'symbol'),
+          chain: CHAIN,
+        })
+        .then((r) => r.output.map((o) => o.output)),
+      sdk.api.abi
+        .multiCall({
+          calls: validGauges.map((i) => ({
+            target: i,
+          })),
+          abi: abiGauge.find((m) => m.name === 'rewardRate'),
+          chain: CHAIN,
+          permitFailure: true,
+        })
+        .then((r) => r.output.map((o) => o.output)),
+      sdk.api.abi
+        .multiCall({
+          calls: validPools.map((i) => ({ target: i })),
+          chain: CHAIN,
+          abi: 'erc20:totalSupply',
+          permitFailure: true,
+        })
+        .then((r) => r.output.map((o) => o.output)),
+      sdk.api.abi
+        .multiCall({
+          calls: validGauges.map((i) => ({
+            target: i,
+          })),
+          abi: abiGauge.find((m) => m.name === 'totalSupply'),
+          chain: CHAIN,
+          permitFailure: true,
+        })
+        .then((r) => r.output.map((o) => o.output)),
+    ]);
 
   const tokens = [
     ...new Set(
@@ -196,26 +205,22 @@ const getGaugeApy = async () => {
 
   const maxSize = 50;
   const pages = Math.ceil(tokens.length / maxSize);
-  let pricesA = [];
-  let x = '';
-  for (const p of [...Array(pages).keys()]) {
-    x = tokens
-      .slice(p * maxSize, maxSize * (p + 1))
-      .map((i) => `${CHAIN}:${i}`)
-      .join(',')
-      .replaceAll('/', '');
-    pricesA = [
-      ...pricesA,
-      (await axios.get(`https://coins.llama.fi/prices/current/${x}`)).data
-        .coins,
-    ];
-  }
+  const pricesA = await Promise.all(
+    [...Array(pages).keys()].map((p) => {
+      const x = tokens
+        .slice(p * maxSize, maxSize * (p + 1))
+        .map((i) => `${CHAIN}:${i}`)
+        .join(',')
+        .replaceAll('/', '');
+      return utils.getPriceApiData(`/prices/current/${x}`).then((r) => r.coins);
+    })
+  );
   let prices = {};
   for (const p of pricesA.flat()) {
     prices = { ...prices, ...p };
   }
 
-  const pools = allPools.map((p, i) => {
+  const pools = validPools.map((p, i) => {
     const poolMeta = metaData[i];
     const r0 = poolMeta.r0 / poolMeta.dec0;
     const r1 = poolMeta.r1 / poolMeta.dec1;
@@ -236,15 +241,19 @@ const getGaugeApy = async () => {
     }
 
     const apyReward =
-      (((rewardRate[i] / 1e18) * 86400 * 365 * prices[`${CHAIN}:${AERO}`]?.price) /
-        tvlUsd) * stakedSupplyRatio *
+      (((rewardRate[i] / 1e18) *
+        86400 *
+        365 *
+        prices[`${CHAIN}:${AERO}`]?.price) /
+        tvlUsd) *
+      stakedSupplyRatio *
       100;
 
     return {
       pool: utils.formatAddress(p),
       chain: utils.formatChain(CHAIN),
       project: PROJECT,
-      symbol: utils.formatSymbol(s.split('-')[1]),
+      symbol: s.split('-')[1],
       tvlUsd,
       apyReward,
       rewardTokens: apyReward ? [AERO] : [],
@@ -262,8 +271,13 @@ const getGaugeApy = async () => {
 };
 
 async function main(timestamp = null) {
-  const poolsApy = await getGaugeApy();
-  const poolsVolumes = await getPoolVolumes(timestamp);
+  const [poolsApy, poolsVolumes] = await Promise.all([
+    getGaugeApy(),
+    getPoolVolumes(timestamp).catch((e) => {
+      console.log('Failed to fetch volume data from subgraph:', e.message);
+      return {};
+    }),
+  ]);
 
   // left-join volumes onto APY output to avoid filtering out pools
   return Object.values(poolsApy).map((pool) => {
@@ -279,6 +293,7 @@ async function main(timestamp = null) {
 }
 
 module.exports = {
+  protocolId: '3450',
   timetravel: false,
   apy: main,
   url: 'https://aerodrome.finance/liquidity',

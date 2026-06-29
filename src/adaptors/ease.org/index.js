@@ -1,8 +1,7 @@
 const utils = require('../utils');
 const { Web3 } = require('web3');
 const sdk = require('@defillama/sdk');
-const superagent = require('superagent');
-require('dotenv').config({ path: './config.env' });
+const axios = require('axios');
 const bribePotAbi = require('./bribePotAbi.json');
 const web3 = new Web3('https://rpc.ankr.com/eth');
 
@@ -53,9 +52,7 @@ const gvEase = async () => {
 
   // calc tvl of gvEase lease
   const priceKey = 'coingecko:ease';
-  const easePrice = (
-    await superagent.get(`https://coins.llama.fi/prices/current/${priceKey}`)
-  ).body.coins[priceKey]?.price;
+  const easePrice = (await utils.getPriceApiData(`/prices/current/${priceKey}`)).coins[priceKey]?.price;
 
   // This is an approximation. Currently, tvlUsd represents the lowest possible TVL with the given gvEase stake.
   const leaseTvlUsd = (web3.utils.fromWei(totalSupply) / 2) * easePrice;

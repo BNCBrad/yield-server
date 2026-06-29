@@ -1,7 +1,7 @@
 const axios = require('axios');
-const superagent = require('superagent');
 const { get } = require('lodash');
 const sdk = require('@defillama/sdk');
+const { getPriceApiUrl, getPriceApiData } = require('../utils');
 
 // Helper for chain ids
 const CHAIN_CONFIG = {
@@ -59,7 +59,7 @@ const VAULTS = [
     accountant: '0x00da610F7b9bc42fa2EF2D4BA312f8cD95131fA2',
     symbol: 'aiBTC',
     underlyingToken: '0x152b9d0FdC40C096757F570A51E494bd4b943E50',
-    rateDecimals: 6,
+    rateDecimals: 8,
   },
   {
     chainId: '43114',
@@ -82,11 +82,11 @@ const getPrices = async (chain, addresses) => {
   }
 
   const priceKeys = addresses.map((address) => `${chain}:${address}`).join(',');
-  const response = await superagent.get(
-    `https://coins.llama.fi/prices/current/${priceKeys.toLowerCase()}`
+  const response = await axios.get(
+    getPriceApiUrl(`/prices/current/${priceKeys.toLowerCase()}`)
   );
 
-  const prices = response.body.coins || {};
+  const prices = response.data.coins || {};
 
   const pricesBySymbol = Object.entries(prices).reduce(
     (acc, [name, price]) => ({
@@ -125,8 +125,8 @@ const getVaultData = async (vaultConfig) => {
   // Get block numbers for historical data
   const chain = CHAIN_CONFIG[vaultConfig.chainId].chain;
   const [block1dayAgo, block7dayAgo] = await Promise.all([
-    axios.get(`https://coins.llama.fi/block/${chain}/${timestamp1dayAgo}`),
-    axios.get(`https://coins.llama.fi/block/${chain}/${timestamp7dayAgo}`)
+    axios.get(getPriceApiUrl(`/block/${chain}/${timestamp1dayAgo}`)),
+    axios.get(getPriceApiUrl(`/block/${chain}/${timestamp7dayAgo}`))
   ]);
 
   // Get exchange rates from accountant
@@ -164,9 +164,7 @@ const getVaultData = async (vaultConfig) => {
 
   // Get underlying token price
   const priceKey = `${chain}:${vaultConfig.underlyingToken}`;
-  const underlyingPrice = (
-    await axios.get(`https://coins.llama.fi/prices/current/${priceKey}`)
-  ).data.coins[priceKey]?.price;
+  const underlyingPrice = (await getPriceApiData(`/prices/current/${priceKey}`)).coins[priceKey]?.price;
 
   if (!underlyingPrice) {
     console.log(`Underlying token price not found, skipping ${vaultConfig.symbol} vault`);
@@ -199,6 +197,7 @@ const getVaultData = async (vaultConfig) => {
     poolMeta: 'Milk Vault',
     apyBase: apy1d,
     apyBase7d: apy7d,
+    ...(currentRateNormalized > 0 && { pricePerShare: currentRateNormalized }),
     underlyingTokens: [vaultConfig.underlyingToken],
     tvlUsd: tvlUsd,
   };
@@ -325,6 +324,7 @@ const main = async () => {
 };
 
 module.exports = {
+  protocolId: '475',
   timetravel: false,
   apy: main,
   url: 'https://yieldyak.com/',

@@ -1,5 +1,5 @@
 const sdk = require('@defillama/sdk');
-const superagent = require('superagent');
+const axios = require('axios');
 
 const abiLendingPool = require('./abiLendingPool.json');
 const abiProtocolDataProvider = require('./abiProtocolDataProvider.json');
@@ -125,9 +125,7 @@ const apy = async () => {
   const pricesArray = [rewardToken, ...reservesList].map(
     (t) => `${chain}:${t}`
   );
-  const prices = (
-    await superagent.get(`https://coins.llama.fi/prices/current/${pricesArray}`)
-  ).body.coins;
+  const prices = (await utils.getPriceApiData(`/prices/current/${pricesArray}`)).coins;
 
   const secondsPerYear = 60 * 60 * 24 * 365;
   const rewardPerYear =
@@ -170,7 +168,7 @@ const apy = async () => {
 
     return {
       pool: reserveData[i].aTokenAddress,
-      symbol: utils.formatSymbol(symbols[i]),
+      symbol: symbols[i],
       project: 'valas-finance',
       chain: utils.formatChain(chain),
       tvlUsd,
@@ -190,6 +188,7 @@ const apy = async () => {
 };
 
 module.exports = {
+  protocolId: '1584',
   timetravel: false,
   apy,
 };

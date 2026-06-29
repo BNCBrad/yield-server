@@ -120,6 +120,7 @@ const main = async () => {
       chain: 'ethereum',
       apy: 0,
       tvlUsd: tvlUsd.toNumber(),
+      underlyingTokens: [ETH],
       // borrow fields
       apyBaseBorrow: ((stabilityFee - 1) / 1) * 100,
       totalSupplyUsd: tvlUsd.toNumber(),
@@ -132,6 +133,7 @@ const main = async () => {
 };
 
 module.exports = {
+  protocolId: '265',
   timetravel: false,
   apy: main,
   url: 'https://reflexer.finance/',

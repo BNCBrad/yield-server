@@ -1,10 +1,14 @@
 const sdk = require('@defillama/sdk');
 const { secondsInYear } = require('date-fns');
-const ethers = require('ethers');
 const { default: BigNumber } = require('bignumber.js');
 const utils = require('../utils');
-const superagent = require('superagent');
+const axios = require('axios');
 const { rewardTokens } = require('../sommelier/config');
+
+const EVENTS = {
+  CreateMarket:
+    'event CreateMarket(address indexed pool, address lender0, address lender1)',
+};
 
 const config = {
   ethereum: { fromBlock: 18782116 },
@@ -58,13 +62,9 @@ async function getPrices(chain, addresses) {
   const priceKeys = [...new Set(addresses)].map(
     (address) => `${chain}:${address}`
   );
-  return (
-    await superagent.get(
-      `https://coins.llama.fi/prices/current/${priceKeys
+  return (await utils.getPriceApiData(`/prices/current/${priceKeys
         .join(',')
-        .toLowerCase()}`
-    )
-  ).body.coins;
+        .toLowerCase()}`)).coins;
 }
 
 async function getPoolsFor(chain) {
@@ -77,29 +77,20 @@ async function getPoolsFor(chain) {
 
   const currentBlock = await sdk.api.util.getLatestBlock(chain);
 
-  const iface = new ethers.utils.Interface([
-    'event CreateMarket(address indexed pool, address lender0, address lender1)',
-  ]);
-  const createMarketEvents = (
-    await sdk.api2.util.getLogs({
-      target: factory,
-      topic: '',
-      fromBlock,
-      toBlock: currentBlock.number,
-      keys: [],
-      topics: [iface.getEventTopic('CreateMarket')],
-      chain,
-    })
-  ).output
-    .filter((ev) => !ev.removed)
-    .map((ev) => iface.parseLog(ev).args);
+  const createMarketEvents = await sdk.getEventLogs({
+    target: factory,
+    eventAbi: EVENTS.CreateMarket,
+    fromBlock,
+    toBlock: currentBlock.number,
+    chain,
+  });
 
   const lenders = createMarketEvents.flatMap((ev, idx) => [
-    { address: ev.lender0, peer: ev.lender1, peerIdx: idx * 2 + 1 },
-    { address: ev.lender1, peer: ev.lender0, peerIdx: idx * 2 },
+    { address: ev.args.lender0, peer: ev.args.lender1, peerIdx: idx * 2 + 1 },
+    { address: ev.args.lender1, peer: ev.args.lender0, peerIdx: idx * 2 },
   ]);
 
-  const uniswapPools = createMarketEvents.map((ev) => ev.pool);
+  const uniswapPools = createMarketEvents.map((ev) => ev.args.pool);
   const ltvs = await getLTVs(chain, factory, volatilityOracle, uniswapPools);
 
   const basics = await sdk.api2.abi.multiCall({
@@ -168,7 +159,7 @@ async function getPoolsFor(chain) {
         pool: `${lender.address}-${chain}`.toLowerCase(),
         chain,
         project: 'aloe',
-        symbol: symbol.toUpperCase(),
+        symbol: symbol,
         tvlUsd: tvl * price,
         apyBase: apyBaseLend * 100,
         underlyingTokens: [info.asset],
@@ -189,6 +180,7 @@ async function apy() {
 }
 
 module.exports = {
+  protocolId: '4370',
   apy,
   timetravel: false,
   url: 'https://app.aloe.capital/markets',

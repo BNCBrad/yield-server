@@ -11,10 +11,11 @@ const getApy = async () => {
       pool: p.address,
       chain: 'Nuls',
       project: 'nerveswap',
-      symbol: utils.formatSymbol(`${p.token0Symbol}-${p.token1Symbol}`),
+      symbol: `${p.token0Symbol}-${p.token1Symbol}`,
       tvlUsd: Number(new BigNumber(p.reserveUsdtValue).shiftedBy(-18).toFixed(6)),
       apyBase: p.feeUsdtValueARP / 100,
       apyReward: apyReward > 0 ? apyReward : null,
+      underlyingTokens: [p.token0, p.token1].filter(Boolean),
       rewardTokens: apyReward > 0 ? [p.lpMintingToken] : [],
       volumeUsd1d: Number(new BigNumber(p.amountUsdtValue24H).shiftedBy(-18).toFixed(6)),
       volumeUsd7d: Number(new BigNumber(p.amountUsdtValue7D).shiftedBy(-18).toFixed(6)),
@@ -25,6 +26,7 @@ const getApy = async () => {
 };
 
 module.exports = {
+  protocolId: '2583',
   apy: getApy,
   url: 'https://nerve.network/info/pools',
 };

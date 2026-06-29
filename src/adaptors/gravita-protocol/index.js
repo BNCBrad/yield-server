@@ -1,5 +1,5 @@
 const sdk = require('@defillama/sdk');
-const superagent = require('superagent');
+const axios = require('axios');
 const VESSEL_MANAGER_ADDRESS = '0xdB5DAcB1DFbe16326C3656a88017f0cB4ece0977';
 const ADMIN_CONTRACT_ADDRESS = '0xf7Cc67326F9A1D057c1e4b110eF6c680B13a1f53';
 const GRAI_ADDRESS = '0x15f74458aE0bFdAA1a96CA1aa779D715Cc1Eefe4';
@@ -138,9 +138,7 @@ const fetchAbiData = async (target, abi, params = []) => {
 
 async function fetchPrice(token) {
   const key = `ethereum:${token}`.toLowerCase();
-  const response = (
-    await superagent.get(`https://coins.llama.fi/prices/current/${key}`)
-  ).body.coins;
+  const response = (await utils.getPriceApiData(`/prices/current/${key}`)).coins;
   return response[key]?.price;
 }
 
@@ -190,12 +188,15 @@ const main = async () => {
 
       const totalSupplyUsd = (vesselAssetTvl * assetPrice) / 1e18;
       const totalBorrowUsd = (mintedGrai * graiPrice) / 1e18;
+      const debtCeilingUsd = (mintCap * graiPrice) / 1e18;
+      const availableBorrowUsd = Math.max(debtCeilingUsd - totalBorrowUsd, 0);
       return {
         pool: `Gravita-${symbol}-Vault`,
         chain: 'ethereum',
         project: 'gravita-protocol',
         symbol: symbol,
         mintedCoin: 'GRAI',
+        borrowToken: GRAI_ADDRESS,
         apy: 0,
         tvlUsd: totalSupplyUsd,
         underlyingTokens: [collateral],
@@ -203,8 +204,10 @@ const main = async () => {
         apyBaseBorrow: borrowingFee / 1e16,
         totalSupplyUsd: totalSupplyUsd,
         totalBorrowUsd: totalBorrowUsd,
-        debtCeilingUsd: (mintCap * graiPrice) / 1e18,
+        availableBorrowUsd,
+        debtCeilingUsd,
         ltv: 1 / (mcr / 1e18), // btw [0, 1]
+        borrowable: debtCeilingUsd > 0,
       };
     })
   );
@@ -213,6 +216,7 @@ const main = async () => {
 };
 
 module.exports = {
+  protocolId: '2992',
   timetravel: false,
   apy: main,
   url: 'https://www.gravitaprotocol.com/',

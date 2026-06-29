@@ -142,6 +142,7 @@ async function getApyByChain(chain, dataTvl) {
             apyBase: Number(apyBase?.value || 0) * 100,
             apyReward: Number(apyReward?.value || 0) * 100,
             rewardTokens: [maprewardTokens[chain][apyReward?.title]],
+            underlyingTokens: [pair.token0.address, pair.token1.address],
           };
           return _pool;
         }
@@ -160,6 +161,7 @@ async function apy() {
 }
 
 module.exports = {
+  protocolId: '1220',
   timetravel: false,
   apy,
   url: 'https://app.killswitch.finance/',

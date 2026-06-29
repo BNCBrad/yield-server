@@ -4,6 +4,8 @@ const axios = require('axios');
 
 // Curve
 const POOL_CONTRACT_LVUSD_3CRV = '0xe9123cbc5d1ea65301d417193c40a72ac8d53501';
+const LVUSD = '0x94a18d9fe00bab617fad8b49b11e9f1f64db6b36';
+const THREE_CRV = '0x6c3f90f043a72fa612cbac8115ee7e52bdd51e1e';
 const POOL_INDEX_LVUSD = 0;
 const POOL_INDEX_3CRV = 1;
 // Coingecko
@@ -14,9 +16,7 @@ const COINGECKO_ID_ARCH = 'archimedes';
 // Get USD value from token amount
 const getUsdValue = async (tokenId, tokenAmount) => {
   const priceKey = `coingecko:${tokenId}`;
-  const usdPrice = (
-    await axios.get(`https://coins.llama.fi/prices/current/${priceKey}`)
-  ).data.coins[priceKey].price;
+  const usdPrice = (await utils.getPriceApiData(`/prices/current/${priceKey}`)).coins[priceKey].price;
   return tokenAmount * usdPrice;
 };
 
@@ -73,15 +73,17 @@ const main = async () => {
     pool: POOL_CONTRACT_LVUSD_3CRV,
     chain: utils.formatChain('Ethereum'),
     project: 'archimedes-finance',
-    symbol: utils.formatSymbol('LvUSD'),
+    symbol: 'lvUSD',
     tvlUsd: tvl,
     apy: await getApy(tvl),
+    underlyingTokens: [LVUSD, THREE_CRV],
   };
 
   return [pool];
 };
 
 module.exports = {
+  protocolId: '2547',
   timetravel: false,
   apy: main,
   url: 'https://curve.finance/#/ethereum/pools/factory-v2-268/deposit',

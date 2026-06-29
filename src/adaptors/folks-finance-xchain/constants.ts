@@ -589,6 +589,22 @@ const HubPools = {
         tokenAddress: '0xe7cd86e13AC4309349F30B3435a9d337750fC82D',
         spokeAddress: '0xB1e2939b501B73F4cFEf6a9FB0aa89a75F1774EE',
       },
+      {
+        // gMON
+        id: 68,
+        underlyingSymbol: 'gMON',
+        poolAddress: '0x0b4e69C4890a88acA90E7e71dB76619C3AaCD79D',
+        tokenAddress: '0x8498312A6B3CbD158bf0c93AbdCF29E6e4F55081',
+        spokeAddress: '0x9105CEEbaf43EF6B80dF1b66BEfFd5F98A036c36',
+      },
+      {
+        // shMON
+        id: 69,
+        underlyingSymbol: 'shMON',
+        poolAddress: '0x398715A6011391B2B7fD1fF66BB26c126E5d4aAC',
+        tokenAddress: '0x1B68626dCa36c7fE922fD2d55E4f631d962dE19c',
+        spokeAddress: '0x1A40208E9506E08a6f62DbCCf8de7387743179E9',
+      },
     ],
   },
 };

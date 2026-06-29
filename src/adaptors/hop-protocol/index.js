@@ -19,7 +19,7 @@ const getApy = async () => {
     const tokenPools = data.pools[token];
     const chains = Object.keys(tokenPools).filter((c) => !['nova'].includes(c));
 
-    for (chain of chains) {
+    for (const chain of chains) {
       const config = coreConfig[token][chain];
       const poolAddress = config?.l2SaddleSwap;
       const tokenAddress = config?.l2CanonicalToken;
@@ -60,9 +60,7 @@ const getApy = async () => {
       ).output;
 
       const key = `${adaptedChain}:${tokenAddress}`;
-      const price = (
-        await axios.get(`https://coins.llama.fi/prices/current/${key}`)
-      ).data.coins[key]?.price;
+      const price = (await utils.getPriceApiData(`/prices/current/${key}`)).coins[key]?.price;
 
       const totalBalance = new BigNumber(tokenBalance)
         .plus(new BigNumber(hopTokenBalance))
@@ -98,7 +96,7 @@ const getApy = async () => {
         apyBase: tokenPools[chain].apy * 100,
         apyReward,
         rewardTokens: apyReward > 0 ? stakingRewardAddresses : [],
-        underlyingTokens: [tokenAddress, hopTokenAddress],
+        underlyingTokens: [tokenAddress],
         tvlUsd,
         url: `https://app.hop.exchange/#/pool?token=${token}`,
       });
@@ -109,6 +107,7 @@ const getApy = async () => {
 };
 
 module.exports = {
+  protocolId: '435',
   timetravel: false,
   apy: getApy,
 };

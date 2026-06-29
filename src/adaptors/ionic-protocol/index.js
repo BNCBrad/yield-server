@@ -272,7 +272,7 @@ const apy = async (chain) => {
     const priceKeys = underlying.map((t) => `${chain}:${t}`).join(',');
     let prices = {};
     try {
-      const pricesResponse = await axios.get(`https://coins.llama.fi/prices/current/${priceKeys}`);
+      const pricesResponse = await axios.get(utils.getPriceApiUrl(`/prices/current/${priceKeys}`));
       prices = pricesResponse.data.coins;
     } catch (error) {
       console.error(`Error fetching prices for chain ${chain}:`, error);
@@ -460,6 +460,7 @@ const apy = async (chain) => {
         apyReward: apyReward !== null && apyReward !== undefined ? apyReward : 0, // Ensure apyBase has a valid value,
         apyBase: apyBase !== null && apyBase !== undefined ? apyBase : 0, // Ensure apyBase has a valid value
         rewardTokens: rewardTokens,
+        underlyingTokens: [underlying[i]],
       };
     });
     return pools;
@@ -474,7 +475,7 @@ const main = async () => {
     const poolArrays = await Promise.all(
       Object.keys(CHAINS).map((chain) => apy(chain))
     );
-    const pools = poolArrays.flat().filter((i) => utils.keepFinite(i));
+    const pools = poolArrays.flat().filter((i) => i !== null && utils.keepFinite(i));
     return pools;
   } catch (error) {
     console.error('Error in main APY function:', error);
@@ -483,6 +484,7 @@ const main = async () => {
 };
 // Export the module
 module.exports = {
+  protocolId: '4070',
   apy: main,
   url: 'https://app.ionic.money/',
 };

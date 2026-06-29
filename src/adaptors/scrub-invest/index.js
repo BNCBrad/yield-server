@@ -1,4 +1,4 @@
-const superagent = require('superagent');
+const axios = require('axios');
 const sdk = require('@defillama/sdk');
 
 const utils = require('../utils');
@@ -154,13 +154,9 @@ const getInfos = async () => {
 };
 
 const getPrices = async (addresses) => {
-  const prices = (
-    await superagent.get(
-      `https://coins.llama.fi/prices/current/${addresses
+  const prices = (await utils.getPriceApiData(`/prices/current/${addresses
         .join(',')
-        .toLowerCase()}`
-    )
-  ).body.coins;
+        .toLowerCase()}`)).coins;
 
   const pricesByAddress = Object.entries(prices).reduce(
     (acc, [name, price]) => ({
@@ -238,6 +234,7 @@ const calcApy = async () => {
 };
 
 module.exports = {
+  protocolId: '2783',
   timetravel: false,
   apy: calcApy,
   url: 'https://invest.scrub.money',

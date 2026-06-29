@@ -1,17 +1,21 @@
-const superagent = require('superagent');
+const axios = require('axios');
 const ss = require('simple-statistics');
 
 const utils = require('../utils/s3');
 const {
   getYieldFiltered,
-  getLatestYieldForPool,
   getYieldOffset,
   getYieldAvg30d,
   getYieldLendBorrow,
 } = require('../queries/yield');
 const { getStat } = require('../queries/stat');
+
 const { welfordUpdate } = require('../utils/welford');
 const poolsResponseColumns = require('../utils/enrichedColumns');
+const { getExcludedAdaptors } = require('../utils/exclude');
+const { checkStablecoin } = require('../adaptors/checkStablecoin');
+
+const ZERO_TVL_CATEGORIES = ['Lending', 'Uncollateralized Lending'];
 
 module.exports.handler = async (event, context) => {
   await main();
@@ -20,13 +24,19 @@ module.exports.handler = async (event, context) => {
 const main = async () => {
   console.log('START DATA ENRICHMENT');
 
+  const config = (
+    await axios.get('https://api.llama.fi/config/yields?a=1')
+  ).data.protocols;
+  const lendingProjects = Object.entries(config)
+    .filter(([, protocol]) => ZERO_TVL_CATEGORIES.includes(protocol?.category))
+    .map(([project]) => project);
+
   // ---------- get lastet unique pool
   console.log('\ngetting pools');
-  let data = await getYieldFiltered();
-  const aaveGHO = await getLatestYieldForPool(
-    '1e00ac2b-0c3c-4b1f-95be-9378f98d2b40'
-  );
-  data = [...data, ...aaveGHO];
+  let data = await getYieldFiltered(lendingProjects);
+
+  const excludedProjects = await getExcludedAdaptors();
+  data = data.filter((p) => !excludedProjects.has(p.project));
 
   // remove aave v2 frozen assets from dataEnriched (we keep ingesting into db, but don't
   // want to display frozen pools on the UI)
@@ -93,10 +103,10 @@ const main = async () => {
   // add info about stablecoin, exposure etc.
   console.log('\nadding additional pool info fields');
   const stablecoins = (
-    await superagent.get(
+    await axios.get(
       'https://stablecoins.llama.fi/stablecoins?includePrices=true'
     )
-  ).body.peggedAssets
+  ).data.peggedAssets
     // removing any stable which a price 30% from 1usd
     .filter((s) => s.price >= 0.7)
     .map((s) => s.symbol.toLowerCase())
@@ -111,9 +121,6 @@ const main = async () => {
   if (!stablecoins.includes('aiusd')) stablecoins.push('aiusd');
 
   // get catgory data (we hardcode IL to true for options protocols)
-  const config = (
-    await superagent.get('https://api.llama.fi/config/yields?a=1')
-  ).body.protocols;
   dataEnriched = dataEnriched.map((el) => addPoolInfo(el, stablecoins, config));
 
   // add ML and overview plot fields
@@ -198,12 +205,8 @@ const main = async () => {
   }));
 
   const y_pred = (
-    await superagent
-      .post(
-        'https://yet9i1xlhf.execute-api.eu-central-1.amazonaws.com/predictions'
-      )
-      // filter to required features only
-      .send(
+    await axios.post(
+        'https://yet9i1xlhf.execute-api.eu-central-1.amazonaws.com/predictions',
         dataEnriched.map((el) => ({
           apy: el.apy,
           tvlUsd: el.tvlUsd,
@@ -213,7 +216,7 @@ const main = async () => {
           project_factorized: el.project_factorized,
         }))
       )
-  ).body.predictions;
+  ).data.predictions;
   // add predictions to dataEnriched
   if (dataEnriched.length !== y_pred.length) {
     throw new Error(
@@ -365,68 +368,6 @@ const enrich = (pool, days, offsets) => {
   return poolC;
 };
 
-const checkStablecoin = (el, stablecoins) => {
-  let tokens = el.symbol.split('-').map((el) => el.toLowerCase());
-  const symbolLC = el.symbol.toLowerCase();
-
-  let stable;
-  if (
-    el.project === 'curve' &&
-    symbolLC.includes('3crv') &&
-    !symbolLC.includes('btc')
-  ) {
-    stable = true;
-  } else if (el.project === 'curve-dex' && symbolLC.includes('xstable')) {
-    stable = true;
-  } else if (el.project === 'convex-finance' && symbolLC.includes('3crv')) {
-    stable = true;
-  } else if (el.project === 'aave-v2' && symbolLC.includes('amm')) {
-    tok = tokens[0].split('weth');
-    stable = tok[0].includes('wbtc') ? false : tok.length > 1 ? false : true;
-  } else if (tokens[0].includes('torn')) {
-    stable = false;
-  } else if (el.project === 'hermes-protocol' && symbolLC.includes('maia')) {
-    stable = false;
-  } else if (el.project === 'sideshift' && symbolLC.includes('xai')) {
-    stable = false;
-  } else if (el.project === 'archimedes-finance' && symbolLC.includes('usd')) {
-    stable = true;
-  } else if (
-    el.project === 'aura' &&
-    [
-      '0xa13a9247ea42d743238089903570127dda72fe44',
-      '0x99c88ad7dc566616548adde8ed3effa730eb6c34',
-      '0xf3aeb3abba741f0eece8a1b1d2f11b85899951cb',
-    ].includes(el.pool)
-  ) {
-    stable = true;
-  } else if (
-    tokens.some((t) => t.includes('sushi')) ||
-    tokens.some((t) => t.includes('dusk')) ||
-    tokens.some((t) => t.includes('fpis')) ||
-    tokens.some((t) => t.includes('emaid')) ||
-    tokens.some((t) => t.includes('grail')) ||
-    tokens.some((t) => t.includes('oxai')) ||
-    tokens.some((t) => t.includes('crv') && !t.includes('crvusd')) ||
-    tokens.some((t) => t.includes('wbai')) ||
-    tokens.some((t) => t.includes('move'))
-  ) {
-    stable = false;
-  } else if (tokens.length === 1) {
-    stable = stablecoins.some((x) =>
-      tokens[0].replace(/\s*\(.*?\)\s*/g, '').includes(x)
-    );
-  } else if (tokens.length > 1) {
-    let x = 0;
-    for (const t of tokens) {
-      x += stablecoins.some((x) => t.includes(x));
-    }
-    stable = x === tokens.length ? true : false;
-  }
-
-  return stable;
-};
-
 // no IL in case of:
 // 1: - stablecoin
 // 2: - 1 asset
@@ -533,5 +474,3 @@ const addPoolInfo = (el, stablecoins, config) => {
 
   return el;
 };
-
-module.exports.checkStablecoin = checkStablecoin;

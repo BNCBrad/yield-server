@@ -18,13 +18,15 @@ const apy = async () => {
         chain: utils.formatChain(mellowVault.network),
         project: 'quasar-vaults',
         symbol: "urLRT",
-        tvlUsd: (await axios.get(`https://coins.llama.fi/prices/current/${underlyingToken}`)).data.coins[`${underlyingToken}`]?.price * mellowVault.totalSupply,
+        tvlUsd: (await utils.getPriceApiData(`/prices/current/${underlyingToken}`)).coins[`${underlyingToken}`]?.price * mellowVault.totalSupply,
         apy: mellowVault.apy,
+        underlyingTokens: [mellowVault.strategyAssets[0].denom],
     }
   ];
 };
 
 module.exports = {
+  protocolId: '3167',
   timetravel: false,
   apy,
   url: 'https://app.quasar.fi',

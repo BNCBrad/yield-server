@@ -1,6 +1,5 @@
 const sdk = require('@defillama/sdk');
 const { default: BigNumber } = require('bignumber.js');
-const superagent = require('superagent');
 const utils = require('../utils');
 const ABI = require('./abi.json');
 
@@ -59,6 +58,7 @@ const getApy = async () => {
 };
 
 module.exports = {
+  protocolId: '1949',
   timetravel: false,
   apy: getApy,
   url: 'https://civfund.org/',

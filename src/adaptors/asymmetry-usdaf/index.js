@@ -1,5 +1,6 @@
 const sdk = require('@defillama/sdk');
-const superagent = require('superagent');
+const axios = require('axios');
+const { getPriceApiData } = require('../utils');
 
 const BOLD_TOKEN = '0x9cf12ccd6020b6888e4d4c4e4c7aca33c1eb91f8';
 
@@ -108,6 +109,20 @@ const ABIS = {
       stateMutability: 'view',
       type: 'function',
     },
+    getCCR: {
+      inputs: [],
+      name: 'CCR',
+      outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+      stateMutability: 'view',
+      type: 'function',
+    },
+    hasBeenShutDown: {
+      inputs: [],
+      name: 'hasBeenShutDown',
+      outputs: [{ internalType: 'bool', name: '', type: 'bool' }],
+      stateMutability: 'view',
+      type: 'function',
+    },
     getNewApproxAvgInterestRateFromTroveChange: {
       inputs: [
         {
@@ -206,7 +221,7 @@ const ABIS = {
 
   const getPrices = async (addresses) => {
     const req = addresses.map((address) => `ethereum:${address}`).join(',').toLowerCase();
-    const prices = (await superagent.get(`https://coins.llama.fi/prices/current/${req}`)).body.coins;
+    const prices = (await getPriceApiData(`/prices/current/${req}`)).coins;
 
     const pricesObj = Object.fromEntries(
       Object.entries(prices).map(([address, priceData]) => [address.split(':')[1].toLowerCase(), priceData.price])
@@ -253,6 +268,26 @@ const ABIS = {
 
     return 1 / (res.output / 1e18);
   }
+  const getCCR = async (borrowerOpsAddr) =>{
+    const res = (await sdk.api.abi.call({
+        target: borrowerOpsAddr,
+        abi: ABIS.getCCR,
+        chain: 'ethereum',
+      })
+    );
+
+    return res.output / 1e18;
+  }
+  const getBranchShutdown = async (borrowerOpsAddr) =>{
+    const res = (await sdk.api.abi.call({
+        target: borrowerOpsAddr,
+        abi: ABIS.hasBeenShutDown,
+        chain: 'ethereum',
+      })
+    );
+
+    return res.output;
+  }
   
   const getNewApproxAvgInterestRateFromTroveChange = async(activePoolAddr) => {
     const res = await sdk.api.abi.call({
@@ -298,24 +333,47 @@ const ABIS = {
     TBTC_BRANCH.price = prices[TBTC_BRANCH.collToken];
     WBTC_BRANCH.price = prices['0x2260fac5e5542a773aa44fbcfedf7c193bc2c599']; // WBTC
     
+    // Fetch TroveNFT addresses per branch: stabilityPool → troveManager() → troveNFT()
+    const troveManagers = (
+      await sdk.api.abi.multiCall({
+        calls: branches.map((b) => ({ target: b.stabilityPool })),
+        abi: 'function troveManager() view returns (address)',
+        chain: 'ethereum',
+      })
+    ).output.map((o) => o.output);
+
+    const troveNFTs = (
+      await sdk.api.abi.multiCall({
+        calls: troveManagers.map((tm) => ({ target: tm })),
+        abi: 'function troveNFT() view returns (address)',
+        chain: 'ethereum',
+      })
+    ).output.map((o) => o.output);
+
     const pools = [];
 
-    for (const branch of branches) {
+    for (let idx = 0; idx < branches.length; idx++) {
+      const branch = branches[idx];
       const collPools = [branch.activePool, branch.defaultPool];
 
       const totalColl = await getBranchColl(collPools);
       const totalCollUsd = totalColl * branch.price
 
       const ltv = await getLTV(branch.borrowerOperations);
+      const ccr = await getCCR(branch.borrowerOperations);
+      const isShutDown = await getBranchShutdown(branch.borrowerOperations);
       const borrowApy = await getNewApproxAvgInterestRateFromTroveChange(branch.activePool);
-      
+
       const totalDebt = await getBranchDebt(collPools);
       const totalDebtUsd = totalDebt * prices[BOLD_TOKEN];
+      const availableBorrowUsd = isShutDown
+        ? 0
+        : Math.max(totalCollUsd / ccr - totalDebtUsd, 0);
 
       const [spSupply, spApy] = await getSPSupplyAndApy(branch.stabilityPool, borrowApy, totalDebt);
       const spSupplyUsd = spSupply * prices[BOLD_TOKEN];
 
-      const spPool = 
+      const spPool =
         {
           pool: branch.stabilityPool,
           project: 'asymmetry-usdaf',
@@ -328,20 +386,24 @@ const ABIS = {
           poolMeta: `${branch.symbol} Stability Pool`
         }
 
-      const borrowPool = 
+      const borrowPool =
         {
           pool: branch.activePool,
           project: 'asymmetry-usdaf',
           symbol: branch.symbol,
           chain: 'ethereum',
+          token: troveNFTs[idx],
           apy: 0,
           tvlUsd: totalCollUsd,
           apyBaseBorrow: borrowApy,
           totalSupplyUsd: totalCollUsd,
           totalBorrowUsd: totalDebtUsd,
+          availableBorrowUsd,
           ltv: ltv,
           mintedCoin: 'USDaf',
-          underlyingTokens: [branch.collToken], 
+          borrowToken: BOLD_TOKEN,
+          borrowable: !isShutDown,
+          underlyingTokens: [branch.collToken],
         }
 
       pools.push(spPool, borrowPool);
@@ -351,6 +413,7 @@ const ABIS = {
   }
 
 module.exports = {
+  protocolId: '6247',
   timetravel: false,
   apy: main,
   url: 'https://usdaf.asymmetry.finance/',

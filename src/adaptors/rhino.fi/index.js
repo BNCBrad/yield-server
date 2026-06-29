@@ -48,9 +48,7 @@ const getTokenSlug = (address, chain, coingeckoSlug) => `${coingeckoSlug ? 'coin
 
 const getTokenPrices = async (tokens) => {
   const l1TokenQuery = tokens.map(({address, chain, coingeckoSlug}) => getTokenSlug(address, chain, coingeckoSlug));
-  const data = await utils.getData(
-    `https://coins.llama.fi/prices/current/${l1TokenQuery}`
-  );
+  const data = await utils.getPriceApiData(`/prices/current/${l1TokenQuery}`);
 
   return Object.fromEntries(
     tokens.map(({address, chain, token, coingeckoSlug}) => {
@@ -117,12 +115,14 @@ const getApy = async () => {
         tvlUsd,
         apyBase,
         symbol: token,
-        url: `${APP_URL}/invest/${token}?utm_source=defillama&utm_medium=listing&utm_campaign=external`
+        url: `${APP_URL}/invest/${token}?utm_source=defillama&utm_medium=listing&utm_campaign=external`,
+        underlyingTokens: [address],
       })
     })
 }
 
 module.exports = {
+  protocolId: '151',
   timetravel: false,
   apy: getApy,
   url: `${APP_URL}/invest?utm_source=defillama&utm_medium=listing&utm_campaign=external`,

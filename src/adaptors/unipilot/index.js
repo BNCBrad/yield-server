@@ -1,5 +1,4 @@
 const sdk = require('@defillama/sdk');
-const superagent = require('superagent');
 const { gql, request } = require('graphql-request');
 const axios = require('axios');
 const utils = require('../utils');
@@ -159,14 +158,10 @@ const getApy = async () => {
       }
       keys = [...new Set(keys.flat())];
 
-      const prices = (
-        await superagent.get(
-          `https://coins.llama.fi/prices/current/${keys
+      const prices = (await utils.getPriceApiData(`/prices/current/${keys
             .flat()
             .join(',')
-            .toLowerCase()}`
-        )
-      ).body.coins;
+            .toLowerCase()}`)).coins;
 
       const pools = Object.entries(vaultData).map(([chain, { vaults }]) => {
         const vaultsAprs = aprs[chain];

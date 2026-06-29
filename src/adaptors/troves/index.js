@@ -13,9 +13,11 @@ const apy = async () => {
       const currPoolId = strategy.id;
       const baseApy = (strategy.apySplit.baseApy || 0) * 100;
       const rewardsApy = (strategy.apySplit.rewardsApy || 0) * 100;
-      const rewardTokens = strategy.depositToken.map((token) => token.address);
-      const underlyingTokens = strategy.depositToken.map(
-        (token) => token.address
+      const rewardTokens = strategy.depositToken.map((token) =>
+        utils.padStarknetAddress(token.address)
+      );
+      const underlyingTokens = strategy.depositToken.map((token) =>
+        utils.padStarknetAddress(token.address)
       );
       const symbols = strategy.depositToken
         .map((token) => token.symbol)
@@ -38,6 +40,7 @@ const apy = async () => {
 };
 
 module.exports = {
+  protocolId: '4952',
   timetravel: false,
   apy: apy,
   url: 'https://www.troves.fi/',

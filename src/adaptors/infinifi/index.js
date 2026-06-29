@@ -3,6 +3,7 @@ const sdk = require('@defillama/sdk');
 const { ethers } = require('ethers');
 
 const siUSDAddress = '0xDBDC1Ef57537E34680B898E1FEBD3D68c7389bCB';
+const iUSDAddress = '0x48f9e38f3070AD8945DFEae3FA70987722E3D89c';
 
 const lockingControllerCallData = {
   address: '0x1d95cC100D6Cd9C7BbDbD7Cb328d99b3D6037fF7',
@@ -38,11 +39,13 @@ async function computeStakedTokenAPY() {
     pool: `${siUSDAddress}-ethereum`.toLowerCase(),
     chain: utils.formatChain('ethereum'),
     project: 'infinifi',
-    symbol: utils.formatSymbol('siUSD'),
+    symbol: 'siUSD',
     tvlUsd: parseFloat(ethers.utils.formatUnits(erc4626Infos.tvl, 18)),
     apyBase: erc4626Infos.apyBase,
+    pricePerShare: erc4626Infos.pricePerShare,
     poolMeta: 'Staked iUSD',
     url: 'https://infinifi.xyz/',
+    underlyingTokens: [iUSDAddress],
   };
 
 }
@@ -115,11 +118,12 @@ async function computeLockedTokensAPY() {
       pool: `${tokenAddress}-ethereum`.toLowerCase(),
       chain: utils.formatChain('ethereum'),
       project: 'infinifi',
-      symbol: utils.formatSymbol(`liUSD-${bucket}w`),
+      symbol: `liUSD-${bucket}w`,
       tvlUsd: totalSupplyNowNormalized,
       apyBase: apy,
       poolMeta: `Locked iUSD - ${bucket} week${bucket > 1 ? 's' : ''}`,
       url: 'https://infinifi.xyz/',
+      underlyingTokens: [iUSDAddress],
     });
   }
 
@@ -129,6 +133,7 @@ async function computeLockedTokensAPY() {
 
 
 module.exports = {
+  protocolId: '6245',
   timetravel: true,
   apy: poolsFunction,
   url: 'https://infinifi.xyz/',

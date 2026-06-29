@@ -56,6 +56,8 @@ const getPools = async () => {
         symbol: `${token0.symbol}-${token1.symbol}`,
         poolName,
         poolId,
+        token0Address: token0.tokenId,
+        token1Address: token1.tokenId,
       };
     })
   );
@@ -83,10 +85,11 @@ const buildPool = (entry) => {
     pool: entry.poolId,
     chain: 'Ethereum',
     project: 'jelly',
-    symbol: utils.formatSymbol(entry.symbol),
+    symbol: entry.symbol,
     poolMeta: entry.poolName,
     tvlUsd: parseInt(entry.tvl, 10),
     apy: parseFloat(entry.apy),
+    underlyingTokens: [entry.token0Address, entry.token1Address].filter(Boolean),
   };
   return newObj;
 };
@@ -98,6 +101,7 @@ async function main() {
 }
 
 module.exports = {
+  protocolId: '1768',
   timetravel: false,
   apy: main,
   url: 'https://app.jelly.io/farms/0xcC43331067234a0014d298b5226A1c22cb0ac66a',

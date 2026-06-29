@@ -1,10 +1,6 @@
 const sdk = require('@defillama/sdk');
 const { request, gql } = require('graphql-request');
-const superagent = require('superagent');
-
 const utils = require('../utils');
-const { checkStablecoin } = require('../../handlers/triggerEnrichment');
-const { boundaries } = require('../../utils/exclude');
 const masterchefAbi = require('./masterchef');
 const deshareAbi = require('./deshare');
 const axios = require('axios');
@@ -128,14 +124,10 @@ const topLvl = async (
       ).output / 1e18;
 
     const arxPriceKey = `arbitrum:${ARX}`;
-    const arxPrice = (
-      await axios.get(`https://coins.llama.fi/prices/current/${arxPriceKey}`)
-    ).data.coins[arxPriceKey]?.price;
+    const arxPrice = (await utils.getPriceApiData(`/prices/current/${arxPriceKey}`)).coins[arxPriceKey]?.price;
 
     const wethPriceKey = `ethereum:${WETH}`;
-    const wethPrice = (
-      await axios.get(`https://coins.llama.fi/prices/current/${wethPriceKey}`)
-    ).data.coins[wethPriceKey]?.price;
+    const wethPrice = (await utils.getPriceApiData(`/prices/current/${wethPriceKey}`)).coins[wethPriceKey]?.price;
 
     const arxPerYearUsd = arxPerSec * 86400 * 365 * arxPrice;
     const wethPerYearUsd = wethPerSec * 86400 * 365 * wethPrice;
@@ -203,15 +195,16 @@ const topLvl = async (
 
     // to reduce the nb of subgraph calls for tick range, we apply the lb db filter in here
     dataNow = dataNow.filter(
-      (p) => p.totalValueLockedUSD >= boundaries.tvlUsdDB.lb
+      (p) => p.totalValueLockedUSD >= utils.MIN_TVL_USD
     );
     // add the symbol for the stablecoin (we need to distinguish btw stable and non stable pools
     // so we apply the correct tick range)
     dataNow = dataNow.map((p) => {
-      const symbol = utils.formatSymbol(
-        `${p.token0.symbol}-${p.token1.symbol}`
+      const symbol = `${p.token0.symbol}-${p.token1.symbol}`;
+      const stablecoin = utils.checkStablecoin(
+        { ...p, symbol: utils.formatSymbol(symbol) },
+        stablecoins
       );
-      const stablecoin = checkStablecoin({ ...p, symbol }, stablecoins);
       return {
         ...p,
         symbol,
@@ -264,7 +257,7 @@ const topLvl = async (
         pool: p.id,
         chain: utils.formatChain(chainString),
         project: 'arbitrum-exchange-v3',
-        poolMeta: `${poolMeta}, stablePool=${p.stablecoin}`,
+        poolMeta,
         symbol: p.symbol,
         tvlUsd: p.totalValueLockedUSD,
         apyReward,
@@ -283,10 +276,10 @@ const topLvl = async (
 
 const main = async (timestamp = null) => {
   const stablecoins = (
-    await superagent.get(
+    await axios.get(
       'https://stablecoins.llama.fi/stablecoins?includePrices=true'
     )
-  ).body.peggedAssets.map((s) => s.symbol.toLowerCase());
+  ).data.peggedAssets.map((s) => s.symbol.toLowerCase());
   if (!stablecoins.includes('eur')) stablecoins.push('eur');
   if (!stablecoins.includes('3crv')) stablecoins.push('3crv');
 
@@ -303,6 +296,7 @@ const main = async (timestamp = null) => {
 };
 
 module.exports = {
+  protocolId: '2962',
   timetravel: false,
   apy: main,
 };

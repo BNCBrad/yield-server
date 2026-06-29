@@ -151,6 +151,7 @@ async function getLendPoolApyData(tokenInfos, pemTokenPrice) {
       poolMeta: 'Ref-Finance',
       apy: +totalLendAPY,
       tvlUsd: tokenPrice.toNumber(),
+      underlyingTokens: [token],
     });
   }
   return lendPoolsApyData;
@@ -182,6 +183,7 @@ async function getFarmPoolApyData(tokenInfos) {
       poolMeta: 'Ref-Finance',
       apy: +data.apy,
       tvlUsd: +data.tvl,
+      underlyingTokens: [farm.token1_id, farm.token2_id].filter(Boolean),
     });
   }
 
@@ -200,6 +202,7 @@ async function getPemApy() {
 }
 
 module.exports = {
+  protocolId: '1967',
   timetravel: false,
   apy: getPemApy,
   url: 'https://app.pembrock.finance/farm',

@@ -19,6 +19,7 @@ const usdfAbi = {
 
 const USDF_TOKEN_CONTRACT = '0x51acB1ea45c1EC2512ae4202B9076C13016dc8aA';
 const FRACTAL_VAULT_CONTRACT = '0x3EAa4b3e8967c02cE1304C1EB35e8C5409838DFC';
+const USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
 
 const fractalMetrics = async () => {
   //fetch apr from api
@@ -49,15 +50,17 @@ const fractalMetrics = async () => {
     pool: '0x3eB82f2eD4d992dc0Bed328214A0907250f4Ec82',
     chain: utils.formatChain('ethereum'),
     project: 'fractal-protocol',
-    symbol: utils.formatSymbol('USDC'),
+    symbol: 'USDC',
     tvlUsd: tvl,
     apy: Number(apyData),
+    underlyingTokens: [USDC],
   };
 
   return [fractalVault]; // Fractal Protocol only has a single vault with APY
 };
 
 module.exports = {
+  protocolId: '1856',
   timetravel: false,
   apy: fractalMetrics,
   url: 'https://app.fractalprotocol.org/',

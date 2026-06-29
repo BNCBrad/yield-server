@@ -30,9 +30,11 @@ var query = gql`
     reserveUSD
     dailyVolumeUSD
     token0 {
+      id
       symbol
     }
     token1 {
+      id
       symbol
     }
   }
@@ -53,6 +55,7 @@ const acquireData = async () => {
       tvlUsd: parseFloat(pairs.reserveUSD),
       apyBase:
         parseFloat(pairs.dailyVolumeUSD / pairs.reserveUSD) * 365 * 0.003 * 100,
+      underlyingTokens: [pairs.token0.id, pairs.token1.id],
     };
     obj.push(newObj);
   });
@@ -60,6 +63,7 @@ const acquireData = async () => {
 };
 
 module.exports = {
+  protocolId: '1296',
   timetravel: false,
   apy: acquireData,
   url: 'https://zipswap.fi/#/farm',

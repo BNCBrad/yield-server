@@ -3,8 +3,9 @@ const sdk = require('@defillama/sdk');
 
 const erc20Abi = require('./abis/erc20.abi.json');
 const potionAbi = require('./abis/potion.abi.json');
+const { getPriceApiUrl } = require('../utils');
 
-const BASE_URL = 'https://coins.llama.fi/prices/current/';
+const BASE_URL = getPriceApiUrl('/prices/current/');
 const POTIONS_URL = 'https://yel.finance/potions';
 
 const CHAINS = {
@@ -143,6 +144,9 @@ const getData = async ({ chainId, address }) => {
   );
   const tvl = baseAssetAmountFormated * baseTokenPrice;
 
+  // Get the underlying token address from the mapping
+  const underlyingToken = POTION_SINGLE_STAKING_LIST[chainId][address];
+
   return {
     chain: CHAINS[chainId],
     project: PROJECT_NAME,
@@ -150,10 +154,12 @@ const getData = async ({ chainId, address }) => {
     symbol: symbol.output.replace('i', ''),
     apyBase: Number(apr),
     tvlUsd: Number(tvl),
+    underlyingTokens: [underlyingToken],
   };
 };
 
 module.exports = {
+  protocolId: '686',
   apy: getAPY,
   url: POTIONS_URL,
 };

@@ -5,6 +5,7 @@ const axios = require('axios')
 const sdk = require('@defillama/sdk')
 const utils = require('../utils')
 const poolAbi = require('./poolAbi')
+const { merklGet } = require('../merkl/merkl-client')
 
 // ---------- chain maps ----------
 const protocolDataProviders = {
@@ -14,6 +15,9 @@ const protocolDataProviders = {
   katana:  '0x4DC446e349bDA9516033E11D63f1851d6B5Fd492',
   plasma:  '0x9C48A6D3e859ab124A8873D73b2678354D0B4c0A',
   hemi:    '0x0F65a7fBCb69074cF8BE8De1E01Ef573da34bD59',
+  ethereum:'0x1A875c28610F0155D377bBD725cc59d055e2D192',
+  avax:    '0xA5217D7cceAa7DCdcc613E88DcFc98A0f145b384',
+  hyperliquid: '0x429e14fCa77b0eC3FAf32a65d09Da97e67E82826',
 }
 
 const CHAIN_NAME = {
@@ -23,6 +27,9 @@ const CHAIN_NAME = {
   katana: 'Katana',
   plasma: 'Plasma',
   hemi: 'Hemi',
+  ethereum: 'Ethereum',
+  avax: 'Avalanche',
+  hyperliquid: 'Hyperliquid L1',
 }
 
 // chain IDs
@@ -33,14 +40,23 @@ const CHAIN_ID = {
   katana: 747474,
   plasma: 9745,
   hemi: 43111,
+  ethereum: 1,
+  avax: 43114,
+  hyperliquid: 999,
 }
 
 function toMarketUrlParam(market) {
   if (market === 'ethereum') return 'mainnet'
   if (market === 'avax') return 'avalanche'
+  if (market === 'hyperliquid') return 'hyper'
   if (market === 'xdai') return 'gnosis'
   if (market === 'bsc') return 'bnb'
   return market
+}
+
+function sdkChainCandidates(market) {
+  if (market === 'hyperliquid') return ['hyperliquid', 'hyperevm']
+  return [market]
 }
 
 // ---------- math ----------
@@ -71,7 +87,7 @@ let merklCache = null
 async function fetchMerkl() {
   if (merklCache) return merklCache
   try {
-    const { data } = await axios.get('https://api.merkl.xyz/v4/opportunities', {
+    const data = await merklGet('/v4/opportunities', {
       params: { mainProtocolId: 'ploutos' },
       timeout: 15000,
     })
@@ -151,17 +167,41 @@ async function buildMerklIndex() {
 
 // ---------- core adapter ----------
 async function getApy(market) {
-  const chain = market
+  let chain = market
   const chainOut = CHAIN_NAME[market] ?? market
   const provider = protocolDataProviders[market]
   const chainId = CHAIN_ID[market] || 0
   if (!provider) return []
 
-  const reserves = (await sdk.api.abi.call({
-    target: provider,
-    abi: poolAbi.find(m => m.name === 'getAllReservesTokens'),
-    chain,
-  })).output
+  let reserves
+  let lastErr
+  for (const candidate of sdkChainCandidates(market)) {
+    try {
+      reserves = (await sdk.api.abi.call({
+        target: provider,
+        abi: poolAbi.find(m => m.name === 'getAllReservesTokens'),
+        chain: candidate,
+      })).output
+      chain = candidate
+      lastErr = null
+      break
+    } catch (e) {
+      lastErr = e
+    }
+  }
+  if (!reserves) {
+    if (lastErr) throw lastErr
+    throw new Error(
+      `[ploutos] getAllReservesTokens returned null/empty output for market="${market}", chain="${chain}", provider="${provider}"`
+    )
+  }
+
+  // coins.llama.fi price prefixes: `avax` for Avalanche, `hyperliquid` for HyperEVM
+  const priceChain = market === 'avax'
+    ? 'avax'
+    : market === 'hyperliquid'
+      ? 'hyperliquid'
+      : chain
 
   const aTokens = (await sdk.api.abi.call({
     target: provider,
@@ -208,8 +248,8 @@ async function getApy(market) {
     calls: reserves.map(p => ({ target: p.tokenAddress })),
   })).output.map(o => o.output)
 
-  const priceKeys = reserves.map(t => `${chain}:${t.tokenAddress}`).join(',')
-  const prices = (await axios.get(`https://coins.llama.fi/prices/current/${priceKeys}`)).data?.coins || {}
+  const priceKeys = reserves.map(t => `${priceChain}:${t.tokenAddress}`).join(',')
+  const prices = (await utils.getPriceApiData(`/prices/current/${priceKeys}`))?.coins || {}
 
   // Merkl map
   const merklMap = await buildMerklIndex()
@@ -223,7 +263,7 @@ async function getApy(market) {
     const symUp = String(r.symbol || '').toUpperCase()
     if (symUp === 'GHO' || symUp === 'SGHO' || symUp === 'STKGHO') continue
 
-    const price = prices[`${chain}:${r.tokenAddress}`]?.price
+    const price = prices[`${priceChain}:${r.tokenAddress}`]?.price
     if (!price) continue
 
     const supplyAToken = Number(aSupplies[i]) / 10 ** Number(aDecs[i])
@@ -310,6 +350,7 @@ async function apy() {
 }
 
 module.exports = {
+  protocolId: '6792',
   timetravel: false,
   apy,
 }

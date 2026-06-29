@@ -3,6 +3,9 @@ const utils = require('../utils');
 
 const BASE_URL = 'https://us-central1-psyfi-api.cloudfunctions.net/';
 
+// Solana token mints
+const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+
 async function getVaultsData() {
   const vaultResponse = await axios.get(BASE_URL + 'vaults');
   if (!vaultResponse) {
@@ -37,12 +40,19 @@ async function getVaultsData() {
       vault.apyReward = vaultInfo.staking?.stakingApr[0];
       vault.rewardTokens = ['SRMuApVNdxXokk5GT7XD5cUUgXMBCoAz2LHeuAoKWRt'];
     }
+    // Add underlying tokens - put vaults use USDC, call vaults use the collateral token
+    if (vaultInfo.id.includes('put')) {
+      vault.underlyingTokens = [USDC_MINT];
+    } else if (vaultInfo.collateralMint) {
+      vault.underlyingTokens = [vaultInfo.collateralMint];
+    }
     vaults.push(vault);
   });
   return vaults;
 }
 
 module.exports = {
+  protocolId: '1172',
   timetravel: false,
   apy: getVaultsData,
   url: 'https://psyfi.io/vaults',
